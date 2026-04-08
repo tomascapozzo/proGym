@@ -1,98 +1,309 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useAuth } from "@/context/auth-context";
+import { useTheme } from "@/context/theme-context";
+import { supabase } from "@/lib/supabase";
+import { router, useFocusEffect } from "expo-router";
+import React, { useCallback, useMemo, useState } from "react";
+import {
+    ActivityIndicator,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+// ─── Motivational quotes ─────────────────────────────────────────────────────
+const QUOTES = [
+  {
+    text: "No cuentes los días, haz que los días cuenten.",
+    author: "Muhammad Ali",
+  },
+  { text: "El cuerpo logra lo que la mente cree.", author: "Jim Evans" },
+  {
+    text: "La disciplina es el puente entre metas y logros.",
+    author: "Jim Rohn",
+  },
+  {
+    text: "El dolor que sientes hoy será la fuerza que sentirás mañana.",
+    author: "",
+  },
+  {
+    text: "El éxito no viene de lo que haces de vez en cuando, sino de lo que haces consistentemente.",
+    author: "Marie Forleo",
+  },
+  {
+    text: "No se trata de ser mejor que los demás, sino de ser mejor que ayer.",
+    author: "",
+  },
+  {
+    text: "Cada entrenamiento es un paso más hacia tu mejor versión.",
+    author: "",
+  },
+  {
+    text: "La fuerza no viene de lo que puedes hacer, sino de superar lo que creías que no podías.",
+    author: "Rikki Rogers",
+  },
+  { text: "Tu único competidor eres tú de ayer.", author: "" },
+  { text: "Haz hoy lo que tu yo de mañana te agradecerá.", author: "" },
+];
+
+type RoutineDay = {
+  dia: string;
+  enfoque: string;
+  ejercicios: {
+    nombre: string;
+    series: number;
+    reps: string;
+    descanso: string;
+  }[];
+};
+
+type Routine = { id: string; data: { nombre: string; dias: RoutineDay[] }; created_at: string };
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const { user, profile } = useAuth();
+  const { colors } = useTheme();
+  const [routine, setRoutine] = useState<Routine | null>(null);
+  const [loadingRoutine, setLoadingRoutine] = useState(true);
+  const [totalWorkouts, setTotalWorkouts] = useState(0);
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const quote = useMemo(() => {
+    return QUOTES[new Date().getDate() % QUOTES.length];
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (user) fetchData();
+    }, [user]),
+  );
+
+  const fetchData = async () => {
+    setLoadingRoutine(true);
+    const [routineRes, countRes] = await Promise.all([
+      supabase
+        .from("routines")
+        .select("*")
+        .eq("user_id", user!.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single(),
+      supabase
+        .from("workout_logs")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user!.id),
+    ]);
+    setRoutine(routineRes.data ?? null);
+    setTotalWorkouts(countRes.count ?? 0);
+    setLoadingRoutine(false);
+  };
+
+  // Cycle through routine days based on workout count
+  const suggestedDay = useMemo((): {
+    day: RoutineDay;
+    index: number;
+  } | null => {
+    if (!routine) return null;
+    const idx = totalWorkouts % routine.data.dias.length;
+    return { day: routine.data.dias[idx], index: idx };
+  }, [routine, totalWorkouts]);
+
+  const startSuggestedSession = () => {
+    if (!suggestedDay) return;
+    router.push({
+      pathname: "/session",
+      params: {
+        type: "routine",
+        dayData: JSON.stringify(suggestedDay.day),
+        dayIndex: String(suggestedDay.index),
+      },
+    });
+  };
+
+  const firstName = profile?.name?.split(" ")[0] ?? "atleta";
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+        {/* ── GREETING ── */}
+        <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 16 }}>
+          Bienvenido,
+        </Text>
+        <Text
+          style={{
+            color: colors.text,
+            fontSize: 28,
+            fontWeight: "bold",
+            marginBottom: 24,
+          }}
+        >
+          {firstName} 👋
+        </Text>
+
+        {/* ── MOTIVATIONAL QUOTE ── */}
+        <View
+          style={{
+            backgroundColor: colors.card,
+            borderRadius: 14,
+            padding: 18,
+            marginBottom: 28,
+            borderLeftWidth: 3,
+            borderLeftColor: colors.accent,
+          }}
+        >
+          <Text
+            style={{
+              color: colors.text,
+              fontSize: 14,
+              lineHeight: 22,
+              fontStyle: "italic",
+            }}
+          >
+            "{quote.text}"
+          </Text>
+          {quote.author ? (
+            <Text style={{ color: colors.accent, fontSize: 12, marginTop: 8 }}>
+              — {quote.author}
+            </Text>
+          ) : null}
+        </View>
+
+        {/* ── TODAY'S WORKOUT ── */}
+        <Text
+          style={{
+            color: colors.textMuted,
+            fontSize: 12,
+            letterSpacing: 1,
+            marginBottom: 10,
+          }}
+        >
+          HOY
+        </Text>
+
+        {loadingRoutine ? (
+          <ActivityIndicator
+            color={colors.accent}
+            style={{ marginBottom: 28, alignSelf: "flex-start" }}
+          />
+        ) : suggestedDay ? (
+          <TouchableOpacity
+            onPress={startSuggestedSession}
+            activeOpacity={0.8}
+            style={{
+              backgroundColor: colors.accentBgAlt,
+              borderRadius: 16,
+              padding: 20,
+              marginBottom: 28,
+              borderWidth: 1,
+              borderColor: colors.accent,
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{ color: colors.accent, fontSize: 12, marginBottom: 4 }}
+              >
+                {suggestedDay.day.dia}
+              </Text>
+              <Text
+                style={{
+                  color: colors.text,
+                  fontSize: 18,
+                  fontWeight: "700",
+                  marginBottom: 4,
+                }}
+              >
+                {suggestedDay.day.enfoque}
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                {suggestedDay.day.ejercicios.length} ejercicios
+              </Text>
+            </View>
+            <View
+              style={{
+                backgroundColor: colors.accent,
+                borderRadius: 22,
+                width: 44,
+                height: 44,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.accentText,
+                  fontWeight: "700",
+                  fontSize: 18,
+                }}
+              >
+                ▶
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 16,
+              padding: 20,
+              marginBottom: 28,
+              borderWidth: 1,
+              borderColor: colors.border,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: colors.textMuted, textAlign: "center" }}>
+              No tenés rutina aún.{"\n"}
+              <Text
+                style={{ color: colors.accent }}
+                onPress={() => router.push("/(tabs)/train")}
+              >
+                Creá una en Entrenar
+              </Text>{" "}
+              para empezar.
+            </Text>
+          </View>
+        )}
+
+        {/* ── COMING SOON: IA ── */}
+        <Text
+          style={{
+            color: colors.textMuted,
+            fontSize: 12,
+            letterSpacing: 1,
+            marginBottom: 10,
+          }}
+        >
+          PRÓXIMAMENTE
+        </Text>
+        <View
+          style={{
+            backgroundColor: colors.card,
+            borderRadius: 16,
+            padding: 18,
+            marginBottom: 24,
+            borderWidth: 1,
+            borderColor: colors.border,
+            opacity: 0.7,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <Text style={{ fontSize: 20 }}>✦</Text>
+            <Text style={{ color: colors.text, fontWeight: "700", fontSize: 15 }}>
+              Rutina generada por IA
+            </Text>
+          </View>
+          <Text
+            style={{
+              color: colors.textMuted,
+              fontSize: 13,
+              lineHeight: 20,
+            }}
+          >
+            Pronto podrás pedirle a proGym que arme una rutina personalizada según tu perfil, objetivos y equipamiento.
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
-});
