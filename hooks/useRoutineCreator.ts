@@ -8,6 +8,7 @@ import {
   type RoutineCircuit,
   type RoutineDay,
   type RoutineDayExercise,
+  type RoutineType,
 } from "@/types/routine";
 
 export function useRoutineCreator(onSaved: () => void) {
@@ -20,6 +21,7 @@ export function useRoutineCreator(onSaved: () => void) {
   // Routine creation modal
   const [createVisible, setCreateVisible] = useState(false);
   const [newRoutineName, setNewRoutineName] = useState("");
+  const [newRoutineType, setNewRoutineType] = useState<RoutineType>("weekly");
   const [newDays, setNewDays] = useState<RoutineDay[]>([]);
   const [editingDayIdx, setEditingDayIdx] = useState<number | null>(null);
   const [savingRoutine, setSavingRoutine] = useState(false);
@@ -54,6 +56,7 @@ export function useRoutineCreator(onSaved: () => void) {
 
   const openCreateRoutine = () => {
     setNewRoutineName("");
+    setNewRoutineType("weekly");
     setNewDays([]);
     setEditingDayIdx(null);
     setCreateVisible(true);
@@ -262,6 +265,15 @@ export function useRoutineCreator(onSaved: () => void) {
     setCircuitExPickerVisible(false);
   };
 
+  const pickCircuitExercises = (exercises: LibraryExercise[]) => {
+    if (circuitExPickerTarget) {
+      exercises.forEach((ex) =>
+        addExToCircuit(circuitExPickerTarget.dayIdx, circuitExPickerTarget.circIdx, ex.name)
+      );
+    }
+    setCircuitExPickerVisible(false);
+  };
+
   // ─── Save ─────────────────────────────────────────────────────────────────
 
   const saveRoutine = async () => {
@@ -273,6 +285,9 @@ export function useRoutineCreator(onSaved: () => void) {
     setSavingRoutine(true);
     await supabase.from("routines").insert({
       user_id: user.id,
+      type: newRoutineType,
+      status: "active",
+      progress: { completed_days: [] },
       data: { nombre: newRoutineName.trim(), dias: newDays },
     });
     setSavingRoutine(false);
@@ -289,6 +304,8 @@ export function useRoutineCreator(onSaved: () => void) {
     // routine form state
     newRoutineName,
     setNewRoutineName,
+    newRoutineType,
+    setNewRoutineType,
     newDays,
     editingDayIdx,
     setEditingDayIdx,
@@ -317,6 +334,7 @@ export function useRoutineCreator(onSaved: () => void) {
     moveCircuitEx,
     openCircuitExPicker,
     pickCircuitExercise,
+    pickCircuitExercises,
     saveRoutine,
   };
 }

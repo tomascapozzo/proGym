@@ -6,15 +6,37 @@ import RestTimerModal from "@/components/session/RestTimerModal";
 import SessionHeader from "@/components/session/SessionHeader";
 import TrackingModeToggle from "@/components/session/TrackingModeToggle";
 import { useAuth } from "@/context/auth-context";
+import { useSession } from "@/context/session-context";
 import { useTheme } from "@/context/theme-context";
 import { supabase } from "@/lib/supabase";
 import type { SessionExercise } from "@/types/session";
-import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Resolve a peso string to a kg number, or undefined if not set.
+ *  "75%"  → oneRm[exerciseName] * 0.75, rounded to nearest 0.5 kg
+ *  "80"   → 80
+ */
+function resolvePeso(
+  peso: string | undefined,
+  exerciseName: string,
+  oneRm: Record<string, number> | undefined,
+): string | undefined {
+  if (!peso || !peso.trim()) return undefined;
+  const pct = peso.trim().match(/^(\d+(?:\.\d+)?)%$/);
+  if (pct) {
+    const rm = oneRm?.[exerciseName];
+    if (!rm) return undefined;
+    const resolved = Math.round((rm * parseFloat(pct[1])) / 100 / 0.5) * 0.5;
+    return String(resolved);
+  }
+  const fixed = parseFloat(peso.trim());
+  if (!isNaN(fixed)) return String(fixed);
+  return undefined;
+}
 
 function parseDescanso(s: string): number {
   if (!s) return 60;
@@ -30,19 +52,28 @@ function parseDescanso(s: string): number {
   return 60;
 }
 
-function buildInitialExercises(params: {
-  type?: string;
-  dayData?: string;
-  exercises?: string;
-}): SessionExercise[] {
+function buildInitialExercises(
+  params: { type?: string; dayData?: string; exercises?: string },
+  oneRm?: Record<string, number>,
+): SessionExercise[] {
   if (params.type === "routine" && params.dayData) {
     const day = JSON.parse(params.dayData);
-    return (day.ejercicios ?? []).map((ej: any) => ({
-      exercise_name: ej.nombre,
-      target: `${ej.series} × ${ej.reps}`,
-      restSeconds: parseDescanso(ej.descanso ?? ""),
-      sets: Array.from({ length: ej.series }, () => ({ reps: "", weight: "", rpe: "", done: false })),
-    }));
+    return (day.ejercicios ?? []).map((ej: any) => {
+      const resolvedWeight = resolvePeso(ej.peso, ej.nombre, oneRm);
+      const targetParts = [`${ej.series} × ${ej.reps}`];
+      if (resolvedWeight) targetParts.push(`${resolvedWeight} kg`);
+      return {
+        exercise_name: ej.nombre,
+        target: targetParts.join(" · "),
+        restSeconds: parseDescanso(ej.descanso ?? ""),
+        sets: Array.from({ length: ej.series }, () => ({
+          reps: "",
+          weight: resolvedWeight ?? "",
+          rpe: "",
+          done: false,
+        })),
+      };
+    });
   }
   if (params.type === "free" && params.exercises) {
     return (JSON.parse(params.exercises) as LibraryExercise[]).map((ex) => ({
@@ -57,133 +88,46 @@ function buildInitialExercises(params: {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SessionScreen() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { colors } = useTheme();
-  const params = useLocalSearchParams<{ type: string; dayData?: string; exercises?: string }>();
+  const session = useSession();
+  const params = useLocalSearchParams<{
+    type: string;
+    dayData?: string;
+    exercises?: string;
+    dayIndex?: string;
+    routineId?: string;
+    routineType?: string;
+    completedDays?: string;
+    totalDays?: string;
+  }>();
 
-  const [sessionExercises, setSessionExercises] = useState<SessionExercise[]>(() => buildInitialExercises(params));
-  const [elapsed, setElapsed] = useState(0);
-  const [saving, setSaving] = useState(false);
+  // UI-only state (doesn't need to survive navigation)
   const [finishModalVisible, setFinishModalVisible] = useState(false);
   const [sessionNotes, setSessionNotes] = useState("");
-  const [trackingMode, setTrackingMode] = useState<"simple" | "detailed">("detailed");
-
-  // Rest timer
-  const [restVisible, setRestVisible] = useState(false);
-  const [restRemaining, setRestRemaining] = useState(60);
-  const [restRunning, setRestRunning] = useState(false);
-  const restIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Add-exercise picker (free sessions)
+  const [saving, setSaving] = useState(false);
   const [addPickerVisible, setAddPickerVisible] = useState(false);
   const [library, setLibrary] = useState<LibraryExercise[]>([]);
   const [loadingLib, setLoadingLib] = useState(false);
 
-  // ─── Timers ───────────────────────────────────────────────────────────────
+  const initializedRef = useRef(false);
+
+  // ── On mount: start session in context if not already active ──────────────
   useEffect(() => {
-    const id = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => clearInterval(id);
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    if (!session.isActive) {
+      const title =
+        params.type === "routine" && params.dayData
+          ? (JSON.parse(params.dayData) as any).dia
+          : "Sesión libre";
+      const exercises = buildInitialExercises(params, profile?.one_rm);
+      session.startSession(title, params, exercises);
+    }
   }, []);
 
-  useEffect(() => {
-    if (restRunning) {
-      restIntervalRef.current = setInterval(() => {
-        setRestRemaining((r) => {
-          if (r <= 1) {
-            setRestRunning(false);
-            clearInterval(restIntervalRef.current!);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            return 0;
-          }
-          return r - 1;
-        });
-      }, 1000);
-    } else {
-      if (restIntervalRef.current) clearInterval(restIntervalRef.current);
-    }
-    return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
-  }, [restRunning]);
-
-  // ─── Rest timer actions ───────────────────────────────────────────────────
-  const startRest = (seconds: number) => {
-    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
-    setRestRemaining(seconds);
-    setRestRunning(true);
-  };
-
-  const skipRest = () => {
-    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
-    setRestRunning(false);
-    setRestRemaining(0);
-    setRestVisible(false);
-  };
-
-  const autoStartRest = (seconds: number) => {
-    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
-    setRestRemaining(seconds);
-    setRestRunning(true);
-    setRestVisible(true);
-  };
-
-  const adjustRest = (delta: number) => setRestRemaining((r) => Math.max(5, r + delta));
-
-  // ─── Set management ───────────────────────────────────────────────────────
-  const addSet = (exIdx: number) => {
-    setSessionExercises((prev) => {
-      const updated = [...prev];
-      updated[exIdx] = { ...updated[exIdx], sets: [...updated[exIdx].sets, { reps: "", weight: "", rpe: "", done: false }] };
-      return updated;
-    });
-  };
-
-  const removeSet = (exIdx: number, setIdx: number) => {
-    setSessionExercises((prev) => {
-      const updated = [...prev];
-      updated[exIdx] = { ...updated[exIdx], sets: updated[exIdx].sets.filter((_, i) => i !== setIdx) };
-      return updated;
-    });
-  };
-
-  const removeExercise = (exIdx: number) => {
-    setSessionExercises((prev) => prev.filter((_, i) => i !== exIdx));
-  };
-
-  const updateSet = (exIdx: number, setIdx: number, field: "reps" | "weight" | "rpe", value: string) => {
-    setSessionExercises((prev) => {
-      const updated = [...prev];
-      const sets = [...updated[exIdx].sets];
-      sets[setIdx] = { ...sets[setIdx], [field]: value };
-      updated[exIdx] = { ...updated[exIdx], sets };
-      return updated;
-    });
-  };
-
-  const toggleDone = (exIdx: number, setIdx: number) => {
-    const wasAlreadyDone = sessionExercises[exIdx].sets[setIdx].done;
-    setSessionExercises((prev) => {
-      const updated = [...prev];
-      const sets = [...updated[exIdx].sets];
-      sets[setIdx] = { ...sets[setIdx], done: !sets[setIdx].done };
-      updated[exIdx] = { ...updated[exIdx], sets };
-      return updated;
-    });
-    if (!wasAlreadyDone) {
-      autoStartRest(sessionExercises[exIdx].restSeconds ?? 60);
-    }
-  };
-
-  const toggleExerciseMode = (exIdx: number) => {
-    setSessionExercises((prev) => {
-      const updated = [...prev];
-      const cur = updated[exIdx].trackingMode;
-      const cycle: (undefined | "simple" | "detailed")[] = [undefined, "simple", "detailed"];
-      const idx = cycle.indexOf(cur);
-      updated[exIdx] = { ...updated[exIdx], trackingMode: cycle[(idx + 1) % 3] };
-      return updated;
-    });
-  };
-
-  // ─── Exercise picker (free session) ──────────────────────────────────────
+  // ── Exercise picker (free session) ────────────────────────────────────────
   const openAddExercise = async () => {
     if (library.length === 0) {
       setLoadingLib(true);
@@ -199,8 +143,8 @@ export default function SessionScreen() {
   };
 
   const addExerciseToSession = (ex: LibraryExercise) => {
-    if (!sessionExercises.find((e) => e.exercise_id === ex.id)) {
-      setSessionExercises((prev) => [
+    if (!session.sessionExercises.find((e) => e.exercise_id === ex.id)) {
+      session.setSessionExercises((prev) => [
         ...prev,
         { exercise_id: ex.id, exercise_name: ex.name, sets: [{ reps: "", weight: "", rpe: "", done: false }] },
       ]);
@@ -208,10 +152,12 @@ export default function SessionScreen() {
     setAddPickerVisible(false);
   };
 
-  // ─── Finish session ───────────────────────────────────────────────────────
+  // ── Finish session ────────────────────────────────────────────────────────
   const finishSession = async () => {
     if (!user) return;
     setSaving(true);
+    const { sessionExercises, elapsed, trackingMode, sessionParams } = session;
+
     const loggedExercises = sessionExercises
       .map((ex) => {
         const mode = ex.trackingMode ?? trackingMode;
@@ -237,52 +183,92 @@ export default function SessionScreen() {
         notes: sessionNotes.trim() || null,
       });
     }
+
+    if (sessionParams.routineId && sessionParams.routineType) {
+      const dayIndex = parseInt(sessionParams.dayIndex ?? "0");
+      const completedDays: number[] = JSON.parse(sessionParams.completedDays ?? "[]");
+      const totalDays = parseInt(sessionParams.totalDays ?? "1");
+
+      const newCompleted = completedDays.includes(dayIndex)
+        ? completedDays
+        : [...completedDays, dayIndex];
+      const allDone = newCompleted.length >= totalDays;
+
+      let newStatus = "active";
+      let newProgress: { completed_days: number[] } = { completed_days: newCompleted };
+
+      if (allDone) {
+        if (sessionParams.routineType === "daily") {
+          newStatus = "past";
+        } else if (sessionParams.routineType === "weekly") {
+          newStatus = "pending_restart";
+        } else if (sessionParams.routineType === "monthly") {
+          newProgress = { completed_days: [] };
+        }
+      }
+
+      await supabase
+        .from("routines")
+        .update({ status: newStatus, progress: newProgress })
+        .eq("id", sessionParams.routineId);
+    }
+
     setSaving(false);
+    session.clearSession();
     router.replace("/(tabs)/train");
   };
 
-  // ─── Derived ──────────────────────────────────────────────────────────────
-  const dayTitle =
-    params.type === "routine" && params.dayData
-      ? (JSON.parse(params.dayData) as any).dia
-      : "Sesión libre";
+  // ── Minimize: go back to tabs while keeping session alive in context ───────
+  const handleMinimize = () => {
+    router.replace("/(tabs)");
+  };
 
-  const completedSets = sessionExercises.reduce((acc, ex) => acc + ex.sets.filter((s) => s.done).length, 0);
-  const alreadyAddedIds = sessionExercises.map((e) => e.exercise_id).filter(Boolean) as string[];
+  // ── Derived ───────────────────────────────────────────────────────────────
+  const alreadyAddedIds = session.sessionExercises
+    .map((e) => e.exercise_id)
+    .filter(Boolean) as string[];
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <SessionHeader
-        dayTitle={dayTitle}
-        completedSets={completedSets}
-        elapsed={elapsed}
+        dayTitle={session.sessionTitle}
+        completedSets={session.completedSets}
+        elapsed={session.elapsed}
         saving={saving}
         colors={colors}
         onFinish={() => setFinishModalVisible(true)}
+        onMinimize={handleMinimize}
       />
 
-      <TrackingModeToggle trackingMode={trackingMode} colors={colors} onChange={setTrackingMode} />
+      <TrackingModeToggle
+        trackingMode={session.trackingMode}
+        colors={colors}
+        onChange={session.setTrackingMode}
+      />
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
-          {sessionExercises.map((ex, exIdx) => (
+        <ScrollView
+          contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {session.sessionExercises.map((ex, exIdx) => (
             <ExerciseCard
               key={exIdx}
               ex={ex}
               exIdx={exIdx}
-              globalMode={trackingMode}
+              globalMode={session.trackingMode}
               colors={colors}
-              onUpdateSet={updateSet}
-              onToggleDone={toggleDone}
-              onAddSet={addSet}
-              onRemoveSet={removeSet}
-              onRemoveExercise={removeExercise}
-              onToggleMode={toggleExerciseMode}
+              onUpdateSet={session.updateSet}
+              onToggleDone={session.toggleDone}
+              onAddSet={session.addSet}
+              onRemoveSet={session.removeSet}
+              onRemoveExercise={session.removeExercise}
+              onToggleMode={session.toggleExerciseMode}
             />
           ))}
 
-          {params.type === "free" && (
+          {session.sessionParams.type === "free" && (
             <TouchableOpacity
               onPress={openAddExercise}
               style={{
@@ -303,8 +289,8 @@ export default function SessionScreen() {
 
       <FinishSessionModal
         visible={finishModalVisible}
-        completedSets={completedSets}
-        elapsed={elapsed}
+        completedSets={session.completedSets}
+        elapsed={session.elapsed}
         sessionNotes={sessionNotes}
         setSessionNotes={setSessionNotes}
         saving={saving}
@@ -314,13 +300,13 @@ export default function SessionScreen() {
       />
 
       <RestTimerModal
-        visible={restVisible}
-        restRemaining={restRemaining}
-        restRunning={restRunning}
+        visible={session.restVisible}
+        restRemaining={session.restRemaining}
+        restRunning={session.restRunning}
         colors={colors}
-        onStart={startRest}
-        onSkip={skipRest}
-        onAdjust={adjustRest}
+        onStart={session.startRest}
+        onSkip={session.skipRest}
+        onAdjust={session.adjustRest}
       />
 
       <ExercisePicker

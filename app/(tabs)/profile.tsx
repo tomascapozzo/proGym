@@ -1,22 +1,28 @@
 import { useAuth } from "@/context/auth-context";
 import { useTheme } from "@/context/theme-context";
 import { supabase } from "@/lib/supabase";
-import React, { useEffect, useState } from "react";
+import { router } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    UIManager,
-    View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  FlatList,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  UIManager,
+  View,
 } from "react-native";
+
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const DRAWER_WIDTH = SCREEN_WIDTH * 0.78;
 
 if (Platform.OS === "android") {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
@@ -102,6 +108,103 @@ export default function ProfileScreen() {
   const [infoModalVisible, setInfoModalVisible] = useState(false);
   const [prPickerVisible, setPrPickerVisible] = useState(false);
 
+  // ── 1RM section ──
+  const [oneRmMap, setOneRmMap] = useState<Record<string, number>>(
+    () => (profile?.one_rm as Record<string, number>) ?? {},
+  );
+  const [oneRmModalVisible, setOneRmModalVisible] = useState(false);
+  const [oneRmEditing, setOneRmEditing] = useState<Record<string, string>>({});
+  const [oneRmPickerVisible, setOneRmPickerVisible] = useState(false);
+  const [oneRmLibrary, setOneRmLibrary] = useState<{ id: string; name: string }[]>([]);
+  const [oneRmLibraryLoading, setOneRmLibraryLoading] = useState(false);
+
+  const openOneRmModal = () => {
+    const editable: Record<string, string> = {};
+    Object.entries(oneRmMap).forEach(([k, v]) => { editable[k] = String(v); });
+    setOneRmEditing(editable);
+    setOneRmModalVisible(true);
+  };
+
+  const saveOneRm = async () => {
+    if (!user) return;
+    const parsed: Record<string, number> = {};
+    Object.entries(oneRmEditing).forEach(([k, v]) => {
+      const n = parseFloat(v);
+      if (k.trim() && !isNaN(n) && n > 0) parsed[k] = n;
+    });
+    await supabase.from("profiles").update({ one_rm: parsed }).eq("id", user.id);
+    setOneRmMap(parsed);
+    await refreshProfile();
+    setOneRmModalVisible(false);
+  };
+
+  const openOneRmExPicker = async () => {
+    if (oneRmLibrary.length === 0) {
+      setOneRmLibraryLoading(true);
+      const { data } = await supabase
+        .from("exercises")
+        .select("id, name")
+        .order("name");
+      setOneRmLibrary(data ?? []);
+      setOneRmLibraryLoading(false);
+    }
+    setOneRmPickerVisible(true);
+  };
+
+  const addOneRmExercise = (name: string) => {
+    if (!oneRmEditing[name]) {
+      setOneRmEditing((prev) => ({ ...prev, [name]: "" }));
+    }
+    setOneRmPickerVisible(false);
+  };
+
+  const removeOneRmEntry = (name: string) => {
+    setOneRmEditing((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+  };
+
+  // ── Settings drawer ──
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const drawerAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
+  const backdropAnim = useRef(new Animated.Value(0)).current;
+
+  const openSettings = () => {
+    setSettingsVisible(true);
+    Animated.parallel([
+      Animated.timing(drawerAnim, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropAnim, {
+        toValue: 1,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const closeSettings = (callback?: () => void) => {
+    Animated.parallel([
+      Animated.timing(drawerAnim, {
+        toValue: DRAWER_WIDTH,
+        duration: 240,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropAnim, {
+        toValue: 0,
+        duration: 240,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setSettingsVisible(false);
+      callback?.();
+    });
+  };
+
   // ── Stats ──
   const [statsLoading, setStatsLoading] = useState(true);
   const [daysThisMonth, setDaysThisMonth] = useState(0);
@@ -115,15 +218,6 @@ export default function ProfileScreen() {
     () => profile?.pr_exercises ?? [],
   );
 
-  // ── History ──
-  type WorkoutLogEntry = {
-    id: string;
-    created_at: string;
-    exercises: { exercise_name: string; sets: any[] }[];
-  };
-  const [history, setHistory] = useState<WorkoutLogEntry[]>([]);
-  const [historyExpanded, setHistoryExpanded] = useState(false);
-
   useEffect(() => {
     if (!user) return;
     const fetchStats = async () => {
@@ -134,7 +228,7 @@ export default function ProfileScreen() {
         1,
       ).toISOString();
 
-      const [monthRes, totalRes, logsRes, historyRes] = await Promise.all([
+      const [monthRes, totalRes, logsRes] = await Promise.all([
         supabase
           .from("workout_logs")
           .select("*", { count: "exact", head: true })
@@ -148,12 +242,6 @@ export default function ProfileScreen() {
           .from("workout_logs")
           .select("exercises")
           .eq("user_id", user.id),
-        supabase
-          .from("workout_logs")
-          .select("id, created_at, exercises")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(30),
       ]);
 
       setDaysThisMonth(monthRes.count ?? 0);
@@ -177,7 +265,6 @@ export default function ProfileScreen() {
         setPrMap(map);
       }
 
-      setHistory((historyRes.data as any) ?? []);
       setStatsLoading(false);
     };
     fetchStats();
@@ -307,6 +394,11 @@ export default function ProfileScreen() {
               <Text style={styles.headerUsername}>@{profile.username}</Text>
             ) : null}
           </View>
+          <TouchableOpacity onPress={openSettings} style={styles.settingsBtn}>
+            <View style={styles.hamburgerLine} />
+            <View style={styles.hamburgerLine} />
+            <View style={styles.hamburgerLine} />
+          </TouchableOpacity>
         </View>
 
         {/* ── SUCCESS BANNER ── */}
@@ -383,78 +475,72 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* ── HISTORIAL ── */}
-        <TouchableOpacity
-          onPress={() => setHistoryExpanded((v) => !v)}
-          style={styles.prSectionHeader}
-        >
-          <Text style={styles.sectionLabel}>HISTORIAL</Text>
-          <Text style={{ color: "#888", fontSize: 13 }}>
-            {historyExpanded ? "▲" : "▼"}
-          </Text>
-        </TouchableOpacity>
+        {/* ── 1RM SECTION ── */}
+        <View style={[styles.prSectionHeader, { marginTop: 8 }]}>
+          <Text style={styles.sectionLabel}>1RM</Text>
+          <TouchableOpacity onPress={openOneRmModal} style={styles.editBtn}>
+            <Text style={styles.editBtnText}>
+              {Object.keys(oneRmMap).length > 0 ? "Editar" : "+ Agregar"}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-        {historyExpanded &&
-          (statsLoading ? (
-            <ActivityIndicator
-              color={colors.accent}
-              style={{ marginBottom: 20 }}
-            />
-          ) : history.length === 0 ? (
-            <View style={styles.prEmptyCard}>
-              <Text style={styles.prEmptyText}>
-                Aún no tenés entrenamientos registrados.
+        {Object.keys(oneRmMap).length === 0 ? (
+          <TouchableOpacity onPress={openOneRmModal} style={[styles.prEmptyCard, { marginBottom: 24 }]}>
+            <Text style={styles.prEmptyText}>
+              Registra tus repeticiones máximas para que la app calcule el peso automáticamente en tus rutinas.
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={[styles.prList, { marginBottom: 24 }]}>
+            {Object.entries(oneRmMap).map(([name, weight]) => (
+              <View key={name} style={styles.prCard}>
+                <Text style={styles.prName} numberOfLines={1}>{name}</Text>
+                <View style={styles.prBadge}>
+                  <Text style={styles.prWeight}>{weight} kg</Text>
+                  <Text style={styles.prReps}>1RM</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* ── NAV CARDS ── */}
+        <Text style={[styles.sectionLabel, { marginTop: 8, marginBottom: 12 }]}>
+          ACTIVIDAD
+        </Text>
+        {[
+          { label: "Historial", subtitle: "Tus entrenamientos registrados", route: "/history" },
+          { label: "Progreso", subtitle: "Tu evolución a lo largo del tiempo", route: "/progress" },
+          { label: "Social", subtitle: "Ranking y amigos", route: "/social" },
+        ].map((item) => (
+          <TouchableOpacity
+            key={item.route}
+            onPress={() => router.push(item.route as any)}
+            activeOpacity={0.75}
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 10,
+              borderWidth: 1,
+              borderColor: colors.border,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <View>
+              <Text style={{ color: colors.text, fontWeight: "600", fontSize: 15 }}>
+                {item.label}
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                {item.subtitle}
               </Text>
             </View>
-          ) : (
-            <View style={{ marginBottom: 24 }}>
-              {history.map((entry) => {
-                const totalSets = entry.exercises.reduce(
-                  (acc: number, ex: any) => acc + (ex.sets?.length ?? 0),
-                  0,
-                );
-                const dateLabel = new Date(entry.created_at).toLocaleDateString(
-                  "es-AR",
-                  { weekday: "short", day: "numeric", month: "short" },
-                );
-                return (
-                  <View key={entry.id} style={styles.historyRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.historyDate}>{dateLabel}</Text>
-                      <Text style={styles.historyDetail}>
-                        {entry.exercises.length} ejercicio
-                        {entry.exercises.length !== 1 ? "s" : ""} · {totalSets}{" "}
-                        serie{totalSets !== 1 ? "s" : ""}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          ))}
-
-        {/* ── EDITAR INFORMACIÓN ── */}
-        <TouchableOpacity
-          onPress={handleOpenInfoModal}
-          style={styles.editInfoBtn}
-        >
-          <Text style={styles.editInfoBtnText}>✏ Editar información</Text>
-        </TouchableOpacity>
-
-        {/* ── THEME TOGGLE ── */}
-        <TouchableOpacity
-          onPress={toggleTheme}
-          style={[styles.themeToggleBtn, { backgroundColor: colors.surface }]}
-        >
-          <Text style={[styles.themeToggleBtnText, { color: colors.text }]}>
-            {isDark ? "☀️ Modo claro" : "🌙 Modo oscuro"}
-          </Text>
-        </TouchableOpacity>
-
-        {/* ── SIGN OUT ── */}
-        <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn}>
-          <Text style={styles.signOutText}>Cerrar sesión</Text>
-        </TouchableOpacity>
+            <Text style={{ color: colors.textDisabled, fontSize: 18 }}>›</Text>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
 
       {/* ── MODAL: EDITAR INFORMACIÓN ── */}
@@ -577,6 +663,239 @@ export default function ProfileScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* ── MODAL: 1RM EDITOR ── */}
+      <Modal visible={oneRmModalVisible} animationType="slide">
+        <View style={[styles.modalFullContainer, { backgroundColor: colors.bg }]}>
+          <View style={styles.modalFullHeader}>
+            <Text style={styles.modalFullTitle}>Mis 1RM</Text>
+            <TouchableOpacity onPress={() => setOneRmModalVisible(false)}>
+              <Text style={styles.modalFullClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalFullScroll} keyboardShouldPersistTaps="handled">
+            <Text style={[styles.sectionLabel, { marginBottom: 12 }]}>
+              REPETICIÓN MÁXIMA POR EJERCICIO
+            </Text>
+            {Object.entries(oneRmEditing).map(([name, val]) => (
+              <View
+                key={name}
+                style={{
+                  backgroundColor: colors.card,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  padding: 12,
+                  marginBottom: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <Text style={{ color: colors.text, fontSize: 14, flex: 1 }} numberOfLines={1}>
+                  {name}
+                </Text>
+                <TextInput
+                  value={val}
+                  onChangeText={(v) => setOneRmEditing((prev) => ({ ...prev, [name]: v }))}
+                  placeholder="kg"
+                  placeholderTextColor={colors.textDisabled}
+                  keyboardType="numeric"
+                  style={{
+                    backgroundColor: colors.inputBg,
+                    borderRadius: 8,
+                    padding: 8,
+                    color: colors.text,
+                    fontSize: 14,
+                    width: 72,
+                    textAlign: "center",
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                />
+                <Text style={{ color: colors.textMuted, fontSize: 13 }}>kg</Text>
+                <TouchableOpacity onPress={() => removeOneRmEntry(name)}>
+                  <Text style={{ color: colors.error, fontSize: 18, paddingLeft: 4 }}>×</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+
+            <TouchableOpacity
+              onPress={openOneRmExPicker}
+              disabled={oneRmLibraryLoading}
+              style={{
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderStyle: "dashed",
+                borderRadius: 12,
+                padding: 14,
+                alignItems: "center",
+                marginBottom: 20,
+              }}
+            >
+              <Text style={{ color: colors.accent, fontWeight: "600" }}>
+                {oneRmLibraryLoading ? "Cargando..." : "+ Agregar ejercicio"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={saveOneRm}
+              style={[styles.saveBtn]}
+            >
+              <Text style={styles.saveBtnText}>Guardar</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* ── MODAL: EJERCICIO PICKER (1RM) ── */}
+      <Modal visible={oneRmPickerVisible} transparent animationType="slide">
+        <Pressable
+          onPress={() => setOneRmPickerVisible(false)}
+          style={styles.modalBackdrop}
+        >
+          <Pressable>
+            <View style={[styles.modalSheet, { maxHeight: 500 }]}>
+              <Text style={styles.modalTitle}>Seleccionar ejercicio</Text>
+              <FlatList
+                data={oneRmLibrary.filter((ex) => !oneRmEditing[ex.name])}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    onPress={() => addOneRmExercise(item.name)}
+                    style={styles.modalOption}
+                  >
+                    <Text style={styles.modalOptionText}>{item.name}</Text>
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <Text style={[styles.prEmptyText, { textAlign: "center", paddingVertical: 20 }]}>
+                    Todos los ejercicios ya están en la lista.
+                  </Text>
+                }
+              />
+              <TouchableOpacity onPress={() => setOneRmPickerVisible(false)}>
+                <Text style={styles.modalDone}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── DRAWER: AJUSTES ── */}
+      {settingsVisible && (
+        <>
+          {/* Backdrop */}
+          <Animated.View
+            style={[styles.drawerBackdrop, { opacity: backdropAnim }]}
+          >
+            <Pressable style={{ flex: 1 }} onPress={() => closeSettings()} />
+          </Animated.View>
+
+          {/* Drawer panel */}
+          <Animated.View
+            style={[
+              styles.drawer,
+              {
+                backgroundColor: colors.bg,
+                transform: [{ translateX: drawerAnim }],
+              },
+            ]}
+          >
+            {/* Drawer header */}
+            <View
+              style={[
+                styles.drawerHeader,
+                { borderBottomColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.drawerTitle, { color: colors.text }]}>
+                Ajustes
+              </Text>
+              <TouchableOpacity onPress={() => closeSettings()}>
+                <Text style={[styles.drawerClose, { color: colors.textMuted }]}>
+                  ✕
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.drawerScroll}>
+              <Text style={styles.sectionLabel}>CUENTA</Text>
+              <View style={{ height: 12 }} />
+
+              <TouchableOpacity
+                onPress={() => closeSettings(handleOpenInfoModal)}
+                style={[
+                  styles.settingsRow,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <Text style={[styles.settingsRowLabel, { color: colors.text }]}>
+                  Editar información
+                </Text>
+                <Text
+                  style={[
+                    styles.settingsRowChevron,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  ›
+                </Text>
+              </TouchableOpacity>
+
+              <View style={{ height: 24 }} />
+              <Text style={styles.sectionLabel}>APARIENCIA</Text>
+              <View style={{ height: 12 }} />
+
+              <TouchableOpacity
+                onPress={toggleTheme}
+                style={[
+                  styles.settingsRow,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <Text style={[styles.settingsRowLabel, { color: colors.text }]}>
+                  {isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+                </Text>
+                <Text
+                  style={[
+                    styles.settingsRowChevron,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  ›
+                </Text>
+              </TouchableOpacity>
+
+              <View style={{ height: 24 }} />
+              <Text style={styles.sectionLabel}>SESIÓN</Text>
+              <View style={{ height: 12 }} />
+
+              <TouchableOpacity
+                onPress={() => closeSettings(handleSignOut)}
+                style={[
+                  styles.settingsRow,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <Text
+                  style={[styles.settingsRowLabel, { color: colors.error }]}
+                >
+                  Cerrar sesión
+                </Text>
+                <Text
+                  style={[
+                    styles.settingsRowChevron,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  ›
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </Animated.View>
+        </>
+      )}
 
       {/* ── MODAL: FIELD PICKER ── */}
       <Modal visible={!!currentPicker} transparent animationType="slide">
@@ -740,38 +1059,71 @@ const getStyles = (colors: any) =>
     prWeight: { color: colors.accent, fontSize: 13, fontWeight: "700" },
     prReps: { color: colors.accent, fontSize: 11, opacity: 0.8 },
 
-    // Editar información button
-    editInfoBtn: {
+    // Settings button in header
+    settingsBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
       backgroundColor: colors.surface,
-      padding: 18,
-      borderRadius: 14,
-      alignItems: "center",
-      marginBottom: 14,
       borderWidth: 1,
       borderColor: colors.border,
-    },
-    editInfoBtnText: { color: colors.text, fontWeight: "600", fontSize: 15 },
-
-    // Theme toggle button
-    themeToggleBtn: {
-      padding: 18,
-      borderRadius: 14,
       alignItems: "center",
-      marginBottom: 14,
+      justifyContent: "center",
+      gap: 4,
+    },
+    hamburgerLine: {
+      width: 16,
+      height: 2,
+      borderRadius: 2,
+      backgroundColor: colors.text,
+    },
+
+    // Drawer overlay
+    drawerBackdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      zIndex: 10,
+    },
+    drawer: {
+      position: "absolute",
+      top: 0,
+      right: 0,
+      bottom: 0,
+      width: DRAWER_WIDTH,
+      zIndex: 11,
+      shadowColor: "#000",
+      shadowOffset: { width: -3, height: 0 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 10,
+    },
+    drawerHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingTop: 64,
+      paddingBottom: 16,
+      borderBottomWidth: 1,
+    },
+    drawerTitle: { fontSize: 18, fontWeight: "700" },
+    drawerClose: { fontSize: 20, padding: 4 },
+    drawerScroll: { padding: 20 },
+
+    // Settings rows
+    settingsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 12,
       borderWidth: 1,
-      borderColor: colors.border,
+      paddingVertical: 16,
+      paddingHorizontal: 16,
+      marginBottom: 8,
+      gap: 12,
     },
-    themeToggleBtnText: { fontWeight: "600", fontSize: 15 },
-
-    // Sign out
-    signOutBtn: {
-      backgroundColor: colors.surface,
-      padding: 18,
-      borderRadius: 14,
-      alignItems: "center",
-      marginBottom: 40,
-    },
-    signOutText: { color: colors.error, fontWeight: "600", fontSize: 16 },
+    settingsRowIcon: { fontSize: 18 },
+    settingsRowLabel: { flex: 1, fontSize: 15, fontWeight: "500" },
+    settingsRowChevron: { fontSize: 20 },
 
     // History
     historyRow: {

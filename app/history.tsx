@@ -1,7 +1,7 @@
 import { useAuth } from "@/context/auth-context";
 import { useTheme } from "@/context/theme-context";
 import { supabase } from "@/lib/supabase";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -115,6 +115,13 @@ export default function HistoryScreen() {
           paddingBottom: 40,
         }}
       >
+        <TouchableOpacity
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+          style={{ marginBottom: 16 }}
+        >
+          <Text style={{ color: colors.accent, fontSize: 15 }}>← Volver</Text>
+        </TouchableOpacity>
         <Text
           style={{
             color: colors.text,

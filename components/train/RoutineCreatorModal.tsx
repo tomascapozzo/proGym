@@ -1,18 +1,137 @@
 import ExercisePicker from "@/components/ui/custom/ExercisePicker";
 import { useTheme } from "@/context/theme-context";
 import type { useRoutineCreator } from "@/hooks/useRoutineCreator";
-import React from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+
+// 30s → 180s in 5s steps
+const REST_OPTIONS = Array.from({ length: 31 }, (_, i) => `${30 + i * 5}s`);
+
+function RestPicker({
+  value,
+  onChange,
+  colors,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  colors: any;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <TouchableOpacity
+        onPress={() => setOpen(true)}
+        style={{
+          backgroundColor: colors.accent,
+          borderRadius: 8,
+          paddingVertical: 8,
+          paddingHorizontal: 12,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          alignSelf: "flex-start",
+        }}
+      >
+        <Text style={{ color: colors.accentText, fontSize: 12, fontWeight: "700" }}>
+          {value || "60s"}
+        </Text>
+        <Text style={{ color: colors.accentText, fontSize: 9 }}>▼</Text>
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="slide">
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}
+          onPress={() => setOpen(false)}
+        >
+          <Pressable>
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                borderTopWidth: 1,
+                borderLeftWidth: 1,
+                borderRightWidth: 1,
+                borderColor: colors.border,
+                maxHeight: 380,
+              }}
+            >
+              {/* Handle + title */}
+              <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 4 }}>
+                <View
+                  style={{
+                    width: 36,
+                    height: 4,
+                    borderRadius: 2,
+                    backgroundColor: colors.border,
+                    marginBottom: 12,
+                  }}
+                />
+                <Text style={{ color: colors.textMuted, fontSize: 11, letterSpacing: 1 }}>
+                  DESCANSO
+                </Text>
+              </View>
+
+              <ScrollView>
+                {REST_OPTIONS.map((opt) => {
+                  const active = value === opt;
+                  return (
+                    <TouchableOpacity
+                      key={opt}
+                      onPress={() => { onChange(opt); setOpen(false); }}
+                      style={{
+                        paddingVertical: 15,
+                        paddingHorizontal: 24,
+                        backgroundColor: active ? colors.accentBg : "transparent",
+                        borderTopWidth: 1,
+                        borderTopColor: colors.border,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: active ? colors.accent : colors.text,
+                          fontSize: 17,
+                          fontWeight: active ? "700" : "400",
+                        }}
+                      >
+                        {opt}
+                      </Text>
+                      {active && (
+                        <Text style={{ color: colors.accent, fontSize: 16 }}>✓</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+                <View style={{ height: Platform.OS === "ios" ? 34 : 16 }} />
+              </ScrollView>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
+const ROUTINE_TYPES: { value: "daily" | "weekly" | "monthly"; label: string; desc: string }[] = [
+  { value: "daily", label: "Diaria", desc: "Una sola sesión, se archiva al completar" },
+  { value: "weekly", label: "Semanal", desc: "Días secuenciales, se reinicia por semana" },
+  { value: "monthly", label: "Mensual", desc: "Ciclo semanal, vuelve al día 1 cada semana" },
+];
 
 type Props = ReturnType<typeof useRoutineCreator>;
 
@@ -21,6 +140,8 @@ export default function RoutineCreatorModal({
   closeCreateRoutine,
   newRoutineName,
   setNewRoutineName,
+  newRoutineType,
+  setNewRoutineType,
   newDays,
   editingDayIdx,
   setEditingDayIdx,
@@ -46,11 +167,11 @@ export default function RoutineCreatorModal({
   moveCircuitEx,
   openCircuitExPicker,
   pickCircuitExercise,
+  pickCircuitExercises,
   pickExercises,
   saveRoutine,
 }: Props) {
 
-  const REST_OPTIONS = ["30s", "60s", "90s", "120s"];
   const { colors } = useTheme();
 
   const canSave =
@@ -119,6 +240,48 @@ export default function RoutineCreatorModal({
                   marginBottom: 24,
                 }}
               />
+
+              {/* Routine type selector */}
+              <Text
+                style={{
+                  color: colors.textMuted,
+                  fontSize: 11,
+                  letterSpacing: 1,
+                  marginBottom: 8,
+                }}
+              >
+                TIPO DE RUTINA
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 24 }}>
+                {ROUTINE_TYPES.map(({ value, label }) => {
+                  const active = newRoutineType === value;
+                  return (
+                    <TouchableOpacity
+                      key={value}
+                      onPress={() => setNewRoutineType(value)}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        borderRadius: 10,
+                        borderWidth: 1.5,
+                        borderColor: active ? colors.accent : colors.border,
+                        backgroundColor: active ? colors.accentBg : colors.card,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: active ? colors.accent : colors.textMuted,
+                          fontWeight: active ? "700" : "400",
+                          fontSize: 13,
+                        }}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
               {/* Days */}
               <Text
@@ -322,35 +485,38 @@ export default function RoutineCreatorModal({
                               >
                                 Descanso
                               </Text>
-                              <View style={{ flexDirection: "row", gap: 4 }}>
-                                {REST_OPTIONS.map((opt) => {
-                                  const active = ej.descanso === opt;
-                                  return (
-                                    <TouchableOpacity
-                                      key={opt}
-                                      onPress={() => updateExercise(dayIdx, exIdx, "descanso", opt)}
-                                      style={{
-                                        flex: 1,
-                                        backgroundColor: active ? colors.accent : colors.surface,
-                                        borderRadius: 8,
-                                        paddingVertical: 8,
-                                        alignItems: "center",
-                                      }}
-                                    >
-                                      <Text
-                                        style={{
-                                          color: active ? colors.accentText : colors.textDisabled,
-                                          fontSize: 11,
-                                          fontWeight: "600",
-                                        }}
-                                      >
-                                        {opt}
-                                      </Text>
-                                    </TouchableOpacity>
-                                  );
-                                })}
-                              </View>
+                              <RestPicker
+                                value={ej.descanso}
+                                onChange={(v) => updateExercise(dayIdx, exIdx, "descanso", v)}
+                                colors={colors}
+                              />
                             </View>
+                          </View>
+                          <View style={{ marginTop: 6 }}>
+                            <Text
+                              style={{
+                                color: colors.textDisabled,
+                                fontSize: 10,
+                                marginBottom: 4,
+                              }}
+                            >
+                              PESO (kg o % de 1RM, ej: "80" o "75%")
+                            </Text>
+                            <TextInput
+                              value={ej.peso ?? ""}
+                              onChangeText={(v) =>
+                                updateExercise(dayIdx, exIdx, "peso", v)
+                              }
+                              placeholder="Opcional"
+                              placeholderTextColor={colors.textDisabled}
+                              style={{
+                                backgroundColor: colors.surface,
+                                borderRadius: 8,
+                                padding: 8,
+                                color: colors.text,
+                                fontSize: 14,
+                              }}
+                            />
                           </View>
                         </View>
                       ))}
@@ -468,7 +634,7 @@ export default function RoutineCreatorModal({
                                 }}
                               />
                             </View>
-                            <View style={{ flex: 1 }}>
+                            <View style={{ flex: 2 }}>
                               <Text
                                 style={{
                                   color: colors.textDisabled,
@@ -478,19 +644,10 @@ export default function RoutineCreatorModal({
                               >
                                 Descanso
                               </Text>
-                              <TextInput
+                              <RestPicker
                                 value={circ.descanso}
-                                onChangeText={(v) =>
-                                  updateCircuit(dayIdx, circIdx, "descanso", v)
-                                }
-                                style={{
-                                  backgroundColor: colors.surface,
-                                  borderRadius: 8,
-                                  padding: 8,
-                                  color: colors.text,
-                                  textAlign: "center",
-                                  fontSize: 14,
-                                }}
+                                onChange={(v) => updateCircuit(dayIdx, circIdx, "descanso", v)}
+                                colors={colors}
                               />
                             </View>
                           </View>
@@ -708,9 +865,11 @@ export default function RoutineCreatorModal({
         visible={circuitExPickerVisible}
         onClose={() => setCircuitExPickerVisible(false)}
         onSelect={pickCircuitExercise}
+        onSelectMultiple={pickCircuitExercises}
+        multiSelect
         library={library}
         loading={loadingLibrary}
-        title="Ejercicio para circuito"
+        title="Elegir ejercicios para circuito"
       />
     </>
   );

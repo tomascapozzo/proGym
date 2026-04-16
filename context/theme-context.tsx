@@ -27,7 +27,24 @@ export interface ThemeColors {
   error: string;
   blue: string;
   setRowBg: string; // background for individual set rows in session
+  // Fixed identity colors for routine types — same in both themes
+  routineColors: {
+    daily: string;
+    weekly: string;
+    monthly: string;
+    skipped: string; // amber — used for skipped-day states across all routine types
+    done: string;    // green — used for completed-day states
+  };
 }
+
+// Routine type colors are fixed identity colors — intentionally the same in both themes
+const ROUTINE_COLORS: ThemeColors["routineColors"] = {
+  daily: "#0EA5E9",
+  weekly: "#6EE7B7",
+  monthly: "#A78BFA",
+  skipped: "#F59E0B",
+  done: "#4ADE80",
+};
 
 const dark: ThemeColors = {
   bg: "#0A0F1A",
@@ -47,6 +64,7 @@ const dark: ThemeColors = {
   error: "#EF4444",
   blue: "#2563EB",
   setRowBg: "#0D1117",
+  routineColors: ROUTINE_COLORS,
 };
 
 const light: ThemeColors = {
@@ -67,6 +85,7 @@ const light: ThemeColors = {
   error: "#EF4444",
   blue: "#2563EB",
   setRowBg: "#F1F5F9",
+  routineColors: ROUTINE_COLORS,
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import {
 } from "react-native";
 
 type Props = {
+  visible: boolean;
   previewDay: RoutineDay | null;
   onClose: () => void;
   onStartSession: () => void;
@@ -21,6 +22,7 @@ type Props = {
 };
 
 export default function DayPreviewModal({
+  visible,
   previewDay,
   onClose,
   onStartSession,
@@ -42,7 +44,7 @@ export default function DayPreviewModal({
       />
 
       <Modal
-        visible={!!previewDay}
+        visible={visible}
         animationType="slide"
         presentationStyle="pageSheet"
       >

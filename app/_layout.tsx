@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import "react-native-reanimated";
 
 import { AuthProvider, useAuth } from "@/context/auth-context";
+import { SessionProvider } from "@/context/session-context";
 import { ThemeProvider as AppThemeProvider, useTheme } from "@/context/theme-context";
 
 export const unstable_settings = {
@@ -38,6 +39,9 @@ function RootNavigator() {
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="session" options={{ headerShown: false }} />
+        <Stack.Screen name="history" options={{ headerShown: false }} />
+        <Stack.Screen name="progress" options={{ headerShown: false }} />
+        <Stack.Screen name="social" options={{ headerShown: false }} />
         <Stack.Screen
           name="modal"
           options={{ presentation: "modal", title: "Modal" }}
@@ -52,7 +56,9 @@ export default function RootLayout() {
   return (
     <AppThemeProvider>
       <AuthProvider>
-        <RootNavigator />
+        <SessionProvider>
+          <RootNavigator />
+        </SessionProvider>
       </AuthProvider>
     </AppThemeProvider>
   );

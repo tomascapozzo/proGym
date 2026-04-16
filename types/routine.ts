@@ -5,6 +5,8 @@ export type RoutineDayExercise = {
   series: number;
   reps: string;
   descanso: string;
+  // Optional target weight: fixed kg (e.g. "80") or % of 1RM (e.g. "75%")
+  peso?: string;
 };
 
 export type RoutineCircuit = {
@@ -21,8 +23,25 @@ export type RoutineDay = {
   circuitos?: RoutineCircuit[];
 };
 
+export type RoutineType = "daily" | "weekly" | "monthly";
+export type RoutineStatus = "active" | "past" | "pending_restart";
+
+export const ROUTINE_TYPE_LABELS: Record<RoutineType, string> = {
+  daily: "DIARIA",
+  weekly: "SEMANAL",
+  monthly: "MENSUAL",
+};
+
+export type RoutineProgress = {
+  completed_days: number[];
+  skipped_days?: number[];
+};
+
 export type Routine = {
   id: string;
+  type: RoutineType;
+  status: RoutineStatus;
+  progress: RoutineProgress;
   data: { nombre: string; dias: RoutineDay[] };
   created_at: string;
 };

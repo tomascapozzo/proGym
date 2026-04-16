@@ -24,6 +24,7 @@ type Profile = {
   altura?: string;
   lesiones?: string;
   pr_exercises?: string[];
+  one_rm?: Record<string, number>;
 };
 
 type AuthContextType = {

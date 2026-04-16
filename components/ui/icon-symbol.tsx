@@ -23,6 +23,8 @@ const MAPPING = {
   "chevron.right": "chevron-right",
   "dumbbell.fill": "fitness-center",
   "person.fill": "person",
+  "chart.bar.fill": "bar-chart",
+  "clock.fill": "history",
 } as IconMapping;
 
 /**
