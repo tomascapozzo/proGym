@@ -12,16 +12,16 @@ export default async function Page({
   const { q, grupo } = await searchParams
   const supabase = createAdminClient()
 
-  let query = supabase
+  let queryBuilder = supabase
     .from('exercises')
     .select('id, name, muscle_group, type, equipment, difficulty, movement_pattern, modalities')
     .order('muscle_group')
     .order('name')
 
-  if (grupo) query = query.eq('muscle_group', grupo)
-  if (q) query = query.ilike('name', `%${q}%`)
+  if (grupo) queryBuilder = queryBuilder.eq('muscle_group', grupo) as typeof queryBuilder
+  if (q) queryBuilder = queryBuilder.ilike('name', `%${q}%`) as typeof queryBuilder
 
-  const { data: exercises, error } = await query
+  const { data: exercises, error } = await queryBuilder
 
   // distinct muscle groups for filter
   const { data: groups } = await supabase
