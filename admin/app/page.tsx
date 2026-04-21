@@ -34,6 +34,12 @@ export default async function Page({
     .order('muscle_group')
   const uniqueGroups = [...new Set(groups?.map((g) => g.muscle_group))]
 
+  const toggleOrdenHref = `/?${new URLSearchParams({
+    ...(q ? { q } : {}),
+    ...(grupo ? { grupo } : {}),
+    ...(orden !== 'recientes' ? { orden: 'recientes' } : {}),
+  }).toString()}`
+
   return (
     <>
       <div className="row" style={{ flexWrap: 'wrap' }}>
@@ -45,45 +51,44 @@ export default async function Page({
         </Link>
       </div>
 
-      {/* Filters */}
-      <form method="GET" className="row" style={{ marginBottom: '1rem', flexWrap: 'wrap' }}>
-        <input
-          className="search-bar"
-          name="q"
-          placeholder="Buscar por nombre..."
-          defaultValue={q}
-        />
-        <select
-          name="grupo"
-          className="search-bar"
-          defaultValue={grupo}
-          style={{ width: '180px' }}
-        >
-          <option value="">Todos los grupos</option>
-          {uniqueGroups.map((g) => (
-            <option key={g} value={g}>
-              {g}
-            </option>
-          ))}
-        </select>
-        <select
-          name="orden"
-          className="search-bar"
-          defaultValue={orden}
-          style={{ width: '180px' }}
-        >
-          <option value="">Orden: A–Z</option>
-          <option value="recientes">Orden: recientes</option>
-        </select>
-        <button type="submit" className="btn btn-secondary">
-          Filtrar
-        </button>
-        {(q || grupo || orden) && (
-          <a href="/" className="btn btn-secondary">
-            Limpiar
-          </a>
-        )}
-      </form>
+      <div className="row" style={{ marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+        {/* Search + group filter form */}
+        <form method="GET" className="row" style={{ flexWrap: 'wrap', gap: '0.5rem', margin: 0 }}>
+          {orden && <input type="hidden" name="orden" value={orden} />}
+          <input
+            className="search-bar"
+            name="q"
+            placeholder="Buscar por nombre..."
+            defaultValue={q}
+          />
+          <select
+            name="grupo"
+            className="search-bar"
+            defaultValue={grupo}
+            style={{ width: '180px' }}
+          >
+            <option value="">Todos los grupos</option>
+            {uniqueGroups.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
+          <button type="submit" className="btn btn-secondary">
+            Filtrar
+          </button>
+          {(q || grupo) && (
+            <a href={orden ? `/?orden=${orden}` : '/'} className="btn btn-secondary">
+              Limpiar
+            </a>
+          )}
+        </form>
+
+        {/* Sort toggle */}
+        <a href={toggleOrdenHref} className="btn btn-secondary" style={{ marginLeft: 'auto' }}>
+          {orden === 'recientes' ? 'Ordenar A–Z' : 'Ordenar por recientes'}
+        </a>
+      </div>
 
       {error && <p style={{ color: 'red' }}>{error.message}</p>}
 
@@ -113,7 +118,13 @@ export default async function Page({
               <td className="muted">{ex.modalities ?? '—'}</td>
               <td className="muted">
                 {ex.updated_at
-                  ? new Date(ex.updated_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                  ? new Date(ex.updated_at).toLocaleString('es-AR', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
                   : '—'}
               </td>
               <td>
