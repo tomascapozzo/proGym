@@ -58,22 +58,49 @@ function buildInitialExercises(
 ): SessionExercise[] {
   if (params.type === "routine" && params.dayData) {
     const day = JSON.parse(params.dayData);
-    return (day.ejercicios ?? []).map((ej: any) => {
-      const resolvedWeight = resolvePeso(ej.peso, ej.nombre, oneRm);
-      const targetParts = [`${ej.series} × ${ej.reps}`];
-      if (resolvedWeight) targetParts.push(`${resolvedWeight} kg`);
+
+    const regularExercises: SessionExercise[] = (day.ejercicios ?? []).map((ej: any) => {
+      const pesoArray: string[] | undefined = Array.isArray(ej.peso) ? ej.peso : undefined;
+      const repsDisplay = Array.isArray(ej.reps) ? ej.reps.join("/") : ej.reps;
+      const firstWeight = resolvePeso(pesoArray?.[0] ?? ej.peso, ej.nombre, oneRm);
+      const targetParts = [`${ej.series} × ${repsDisplay}`];
+      if (firstWeight) targetParts.push(`${firstWeight} kg`);
       return {
         exercise_name: ej.nombre,
         target: targetParts.join(" · "),
         restSeconds: parseDescanso(ej.descanso ?? ""),
-        sets: Array.from({ length: ej.series }, () => ({
+        sets: Array.from({ length: ej.series }, (_, i) => ({
           reps: "",
-          weight: resolvedWeight ?? "",
+          weight: resolvePeso(pesoArray?.[i] ?? ej.peso, ej.nombre, oneRm) ?? "",
           rpe: "",
           done: false,
         })),
       };
     });
+
+    const circuitExercises: SessionExercise[] = (day.circuitos ?? []).flatMap((circ: any) =>
+      (circ.ejercicios ?? []).map((cEx: any) => {
+        const pesoArray: string[] | undefined = Array.isArray(cEx.peso) ? cEx.peso : undefined;
+        const repsDisplay = Array.isArray(cEx.reps) ? cEx.reps.join("/") : cEx.reps;
+        const firstWeight = resolvePeso(pesoArray?.[0] ?? cEx.peso, cEx.nombre, oneRm);
+        const prefix = circ.nombre ? `${circ.nombre} - ` : "";
+        const targetParts = [`${circ.rondas} rondas × ${repsDisplay}`];
+        if (firstWeight) targetParts.push(`${firstWeight} kg`);
+        return {
+          exercise_name: `${prefix}${cEx.nombre}`,
+          target: targetParts.join(" · "),
+          restSeconds: parseDescanso(circ.descanso ?? ""),
+          sets: Array.from({ length: circ.rondas }, (_, i) => ({
+            reps: "",
+            weight: resolvePeso(pesoArray?.[i] ?? cEx.peso, cEx.nombre, oneRm) ?? "",
+            rpe: "",
+            done: false,
+          })),
+        };
+      }),
+    );
+
+    return [...regularExercises, ...circuitExercises];
   }
   if (params.type === "free" && params.exercises) {
     return (JSON.parse(params.exercises) as LibraryExercise[]).map((ex) => ({

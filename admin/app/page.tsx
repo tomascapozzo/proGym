@@ -7,16 +7,20 @@ export const dynamic = 'force-dynamic'
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; grupo?: string }>
+  searchParams: Promise<{ q?: string; grupo?: string; orden?: string }>
 }) {
-  const { q, grupo } = await searchParams
+  const { q, grupo, orden } = await searchParams
   const supabase = createAdminClient()
 
   let queryBuilder = supabase
     .from('exercises')
-    .select('id, name, muscle_group, type, equipment, difficulty, movement_pattern, modalities')
-    .order('muscle_group')
-    .order('name')
+    .select('id, name, muscle_group, type, equipment, difficulty, movement_pattern, modalities, updated_at')
+
+  if (orden === 'recientes') {
+    queryBuilder = queryBuilder.order('updated_at', { ascending: false }) as typeof queryBuilder
+  } else {
+    queryBuilder = queryBuilder.order('muscle_group').order('name') as typeof queryBuilder
+  }
 
   if (grupo) queryBuilder = queryBuilder.eq('muscle_group', grupo) as typeof queryBuilder
   if (q) queryBuilder = queryBuilder.ilike('name', `%${q}%`) as typeof queryBuilder
@@ -62,10 +66,19 @@ export default async function Page({
             </option>
           ))}
         </select>
+        <select
+          name="orden"
+          className="search-bar"
+          defaultValue={orden}
+          style={{ width: '180px' }}
+        >
+          <option value="">Orden: A–Z</option>
+          <option value="recientes">Orden: recientes</option>
+        </select>
         <button type="submit" className="btn btn-secondary">
           Filtrar
         </button>
-        {(q || grupo) && (
+        {(q || grupo || orden) && (
           <a href="/" className="btn btn-secondary">
             Limpiar
           </a>
@@ -84,6 +97,7 @@ export default async function Page({
             <th>Equipamiento</th>
             <th>Dificultad</th>
             <th>Modalidades</th>
+            <th>Ultima edicion</th>
             <th style={{ width: '100px' }}>Acciones</th>
           </tr>
         </thead>
@@ -97,6 +111,11 @@ export default async function Page({
               <td>{ex.equipment}</td>
               <td>{ex.difficulty ?? <span className="muted">—</span>}</td>
               <td className="muted">{ex.modalities ?? '—'}</td>
+              <td className="muted">
+                {ex.updated_at
+                  ? new Date(ex.updated_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                  : '—'}
+              </td>
               <td>
                 <div style={{ display: 'flex', gap: '0.4rem' }}>
                   <Link
@@ -113,7 +132,7 @@ export default async function Page({
           ))}
           {exercises?.length === 0 && (
             <tr>
-              <td colSpan={8} style={{ textAlign: 'center', color: '#888', padding: '2rem' }}>
+              <td colSpan={9} style={{ textAlign: 'center', color: '#888', padding: '2rem' }}>
                 No se encontraron ejercicios
               </td>
             </tr>

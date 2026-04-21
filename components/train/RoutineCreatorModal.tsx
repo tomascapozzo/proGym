@@ -141,7 +141,7 @@ export default function RoutineCreatorModal({
   newRoutineName,
   setNewRoutineName,
   newRoutineType,
-  setNewRoutineType,
+  changeRoutineType,
   newDays,
   editingDayIdx,
   setEditingDayIdx,
@@ -156,13 +156,17 @@ export default function RoutineCreatorModal({
   updateDay,
   removeDay,
   updateExercise,
+  updateExerciseSeries,
+  updateExerciseRep,
+  updateExercisePeso,
   removeExercise,
   openExPickerForDay,
   pickExercise,
   addCircuit,
   updateCircuit,
   removeCircuit,
-  updateCircuitEx,
+  updateCircuitExRep,
+  updateCircuitExPeso,
   removeCircuitEx,
   moveCircuitEx,
   openCircuitExPicker,
@@ -177,7 +181,11 @@ export default function RoutineCreatorModal({
   const canSave =
     !!newRoutineName.trim() &&
     newDays.length > 0 &&
-    newDays.some((d) => d.ejercicios.length > 0 || (d.circuitos ?? []).length > 0);
+    newDays.some(
+      (d) =>
+        d.ejercicios.length > 0 ||
+        (d.circuitos ?? []).some((c) => c.ejercicios.length > 0),
+    );
 
   return (
     <>
@@ -258,7 +266,7 @@ export default function RoutineCreatorModal({
                   return (
                     <TouchableOpacity
                       key={value}
-                      onPress={() => setNewRoutineType(value)}
+                      onPress={() => changeRoutineType(value)}
                       style={{
                         flex: 1,
                         paddingVertical: 10,
@@ -343,11 +351,13 @@ export default function RoutineCreatorModal({
                           }`}
                       </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => removeDay(dayIdx)}>
-                      <Text style={{ color: colors.error, fontSize: 18, paddingLeft: 12 }}>
-                        ×
-                      </Text>
-                    </TouchableOpacity>
+                    {newRoutineType !== "daily" && (
+                      <TouchableOpacity onPress={() => removeDay(dayIdx)}>
+                        <Text style={{ color: colors.error, fontSize: 18, paddingLeft: 12 }}>
+                          ×
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
 
                   {/* Day detail (expanded) */}
@@ -423,7 +433,8 @@ export default function RoutineCreatorModal({
                             </TouchableOpacity>
                           </View>
 
-                          <View style={{ flexDirection: "row", gap: 6 }}>
+                          {/* Series count + descanso */}
+                          <View style={{ flexDirection: "row", gap: 6, marginBottom: 10 }}>
                             <View style={{ flex: 1 }}>
                               <Text
                                 style={{
@@ -434,46 +445,59 @@ export default function RoutineCreatorModal({
                               >
                                 Series
                               </Text>
-                              <TextInput
-                                value={String(ej.series)}
-                                onChangeText={(v) =>
-                                  updateExercise(dayIdx, exIdx, "series", parseInt(v) || 0)
-                                }
-                                keyboardType="numeric"
+                              <View
                                 style={{
-                                  backgroundColor: colors.surface,
-                                  borderRadius: 8,
-                                  padding: 8,
-                                  color: colors.text,
-                                  textAlign: "center",
-                                  fontSize: 14,
-                                }}
-                              />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text
-                                style={{
-                                  color: colors.textDisabled,
-                                  fontSize: 10,
-                                  marginBottom: 4,
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 6,
                                 }}
                               >
-                                Reps
-                              </Text>
-                              <TextInput
-                                value={ej.reps}
-                                onChangeText={(v) =>
-                                  updateExercise(dayIdx, exIdx, "reps", v)
-                                }
-                                style={{
-                                  backgroundColor: colors.surface,
-                                  borderRadius: 8,
-                                  padding: 8,
-                                  color: colors.text,
-                                  textAlign: "center",
-                                  fontSize: 14,
-                                }}
-                              />
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    updateExerciseSeries(dayIdx, exIdx, Math.max(1, ej.series - 1))
+                                  }
+                                  style={{
+                                    width: 30,
+                                    height: 30,
+                                    borderRadius: 8,
+                                    backgroundColor: colors.surface,
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  <Text style={{ color: colors.text, fontSize: 18, lineHeight: 20 }}>
+                                    −
+                                  </Text>
+                                </TouchableOpacity>
+                                <Text
+                                  style={{
+                                    color: colors.text,
+                                    fontSize: 16,
+                                    fontWeight: "700",
+                                    minWidth: 20,
+                                    textAlign: "center",
+                                  }}
+                                >
+                                  {ej.series}
+                                </Text>
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    updateExerciseSeries(dayIdx, exIdx, ej.series + 1)
+                                  }
+                                  style={{
+                                    width: 30,
+                                    height: 30,
+                                    borderRadius: 8,
+                                    backgroundColor: colors.surface,
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  <Text style={{ color: colors.text, fontSize: 18, lineHeight: 20 }}>
+                                    +
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
                             </View>
                             <View style={{ flex: 2 }}>
                               <Text
@@ -492,31 +516,80 @@ export default function RoutineCreatorModal({
                               />
                             </View>
                           </View>
-                          <View style={{ marginTop: 6 }}>
-                            <Text
+
+                          {/* Per-series reps + peso */}
+                          <View>
+                            <View
                               style={{
-                                color: colors.textDisabled,
-                                fontSize: 10,
-                                marginBottom: 4,
+                                flexDirection: "row",
+                                justifyContent: "space-between",
+                                marginBottom: 6,
                               }}
                             >
-                              PESO (kg o % de 1RM, ej: "80" o "75%")
-                            </Text>
-                            <TextInput
-                              value={ej.peso ?? ""}
-                              onChangeText={(v) =>
-                                updateExercise(dayIdx, exIdx, "peso", v)
-                              }
-                              placeholder="Opcional"
-                              placeholderTextColor={colors.textDisabled}
-                              style={{
-                                backgroundColor: colors.surface,
-                                borderRadius: 8,
-                                padding: 8,
-                                color: colors.text,
-                                fontSize: 14,
-                              }}
-                            />
+                              <Text style={{ color: colors.textDisabled, fontSize: 10 }}>
+                                Reps / Peso por serie
+                              </Text>
+                              <Text style={{ color: colors.textDisabled, fontSize: 9 }}>
+                                kg o % de 1RM
+                              </Text>
+                            </View>
+                            <ScrollView
+                              horizontal
+                              showsHorizontalScrollIndicator={false}
+                            >
+                              {ej.reps.map((rep, si) => (
+                                <View
+                                  key={si}
+                                  style={{ alignItems: "center", marginRight: 8 }}
+                                >
+                                  <Text
+                                    style={{
+                                      color: colors.textDisabled,
+                                      fontSize: 9,
+                                      marginBottom: 4,
+                                    }}
+                                  >
+                                    S{si + 1}
+                                  </Text>
+                                  <TextInput
+                                    value={rep}
+                                    onChangeText={(v) =>
+                                      updateExerciseRep(dayIdx, exIdx, si, v)
+                                    }
+                                    keyboardType="numeric"
+                                    placeholder="reps"
+                                    placeholderTextColor={colors.textDisabled}
+                                    style={{
+                                      backgroundColor: colors.surface,
+                                      borderRadius: 8,
+                                      padding: 8,
+                                      color: colors.text,
+                                      textAlign: "center",
+                                      fontSize: 13,
+                                      width: 52,
+                                      marginBottom: 4,
+                                    }}
+                                  />
+                                  <TextInput
+                                    value={(ej.peso ?? [])[si] ?? ""}
+                                    onChangeText={(v) =>
+                                      updateExercisePeso(dayIdx, exIdx, si, v)
+                                    }
+                                    placeholder="kg"
+                                    placeholderTextColor={colors.textDisabled}
+                                    style={{
+                                      backgroundColor: colors.surface,
+                                      borderRadius: 8,
+                                      padding: 8,
+                                      color: colors.text,
+                                      textAlign: "center",
+                                      fontSize: 13,
+                                      width: 52,
+                                    }}
+                                  />
+                                </View>
+                              ))}
+                            </ScrollView>
                           </View>
                         </View>
                       ))}
@@ -661,88 +734,131 @@ export default function RoutineCreatorModal({
                                 borderRadius: 8,
                                 padding: 10,
                                 marginBottom: 6,
-                                flexDirection: "row",
-                                alignItems: "center",
-                                gap: 6,
                               }}
                             >
-                              {/* Reorder buttons */}
-                              <View style={{ alignItems: "center", justifyContent: "center", gap: 2 }}>
-                                <TouchableOpacity
-                                  onPress={() => moveCircuitEx(dayIdx, circIdx, exIdx, "up")}
-                                  disabled={exIdx === 0}
-                                  style={{ opacity: exIdx === 0 ? 0.2 : 1, padding: 2 }}
-                                >
-                                  <Text style={{ color: "#C4B5FD", fontSize: 10 }}>▲</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  onPress={() => moveCircuitEx(dayIdx, circIdx, exIdx, "down")}
-                                  disabled={exIdx === circ.ejercicios.length - 1}
-                                  style={{
-                                    opacity: exIdx === circ.ejercicios.length - 1 ? 0.2 : 1,
-                                    padding: 2,
-                                  }}
-                                >
-                                  <Text style={{ color: "#C4B5FD", fontSize: 10 }}>▼</Text>
-                                </TouchableOpacity>
-                              </View>
-
-                              {/* Number badge */}
+                              {/* Header row: reorder + name + remove */}
                               <View
                                 style={{
-                                  width: 20,
-                                  height: 20,
-                                  borderRadius: 10,
-                                  backgroundColor: "#2E1065",
+                                  flexDirection: "row",
                                   alignItems: "center",
-                                  justifyContent: "center",
+                                  gap: 6,
+                                  marginBottom: 10,
                                 }}
                               >
-                                <Text
-                                  style={{ color: "#C4B5FD", fontSize: 10, fontWeight: "700" }}
+                                <View style={{ alignItems: "center", gap: 2 }}>
+                                  <TouchableOpacity
+                                    onPress={() => moveCircuitEx(dayIdx, circIdx, exIdx, "up")}
+                                    disabled={exIdx === 0}
+                                    style={{ opacity: exIdx === 0 ? 0.2 : 1, padding: 2 }}
+                                  >
+                                    <Text style={{ color: "#C4B5FD", fontSize: 10 }}>▲</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={() => moveCircuitEx(dayIdx, circIdx, exIdx, "down")}
+                                    disabled={exIdx === circ.ejercicios.length - 1}
+                                    style={{
+                                      opacity: exIdx === circ.ejercicios.length - 1 ? 0.2 : 1,
+                                      padding: 2,
+                                    }}
+                                  >
+                                    <Text style={{ color: "#C4B5FD", fontSize: 10 }}>▼</Text>
+                                  </TouchableOpacity>
+                                </View>
+                                <View
+                                  style={{
+                                    width: 20,
+                                    height: 20,
+                                    borderRadius: 10,
+                                    backgroundColor: "#2E1065",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
                                 >
-                                  {exIdx + 1}
+                                  <Text style={{ color: "#C4B5FD", fontSize: 10, fontWeight: "700" }}>
+                                    {exIdx + 1}
+                                  </Text>
+                                </View>
+                                <Text
+                                  style={{ color: colors.text, fontSize: 13, fontWeight: "600", flex: 1 }}
+                                  numberOfLines={1}
+                                >
+                                  {cEx.nombre}
                                 </Text>
+                                <TouchableOpacity onPress={() => removeCircuitEx(dayIdx, circIdx, exIdx)}>
+                                  <Text style={{ color: colors.error, fontSize: 16, paddingLeft: 8 }}>
+                                    ×
+                                  </Text>
+                                </TouchableOpacity>
                               </View>
 
-                              {/* Exercise name */}
-                              <Text
-                                style={{ color: colors.text, fontSize: 12, flex: 1 }}
-                                numberOfLines={1}
-                              >
-                                {cEx.nombre}
-                              </Text>
-
-                              {/* Reps input */}
-                              <TextInput
-                                value={cEx.reps}
-                                onChangeText={(v) =>
-                                  updateCircuitEx(dayIdx, circIdx, exIdx, "reps", v)
-                                }
-                                style={{
-                                  backgroundColor: colors.surface,
-                                  borderRadius: 6,
-                                  padding: 6,
-                                  color: colors.text,
-                                  textAlign: "center",
-                                  fontSize: 12,
-                                  width: 50,
-                                }}
-                              />
-                              <Text style={{ color: colors.textDisabled, fontSize: 10 }}>
-                                reps
-                              </Text>
-
-                              {/* Remove */}
-                              <TouchableOpacity
-                                onPress={() => removeCircuitEx(dayIdx, circIdx, exIdx)}
-                              >
-                                <Text
-                                  style={{ color: colors.error, fontSize: 14, paddingLeft: 4 }}
+                              {/* Per-round reps + peso cells */}
+                              <View>
+                                <View
+                                  style={{
+                                    flexDirection: "row",
+                                    justifyContent: "space-between",
+                                    marginBottom: 6,
+                                  }}
                                 >
-                                  ×
-                                </Text>
-                              </TouchableOpacity>
+                                  <Text style={{ color: colors.textDisabled, fontSize: 10 }}>
+                                    Reps / Peso por ronda
+                                  </Text>
+                                  <Text style={{ color: colors.textDisabled, fontSize: 9 }}>
+                                    kg o % de 1RM
+                                  </Text>
+                                </View>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                  {cEx.reps.map((rep, ri) => (
+                                    <View key={ri} style={{ alignItems: "center", marginRight: 8 }}>
+                                      <Text
+                                        style={{
+                                          color: colors.textDisabled,
+                                          fontSize: 9,
+                                          marginBottom: 4,
+                                        }}
+                                      >
+                                        R{ri + 1}
+                                      </Text>
+                                      <TextInput
+                                        value={rep}
+                                        onChangeText={(v) =>
+                                          updateCircuitExRep(dayIdx, circIdx, exIdx, ri, v)
+                                        }
+                                        keyboardType="numeric"
+                                        placeholder="reps"
+                                        placeholderTextColor={colors.textDisabled}
+                                        style={{
+                                          backgroundColor: colors.surface,
+                                          borderRadius: 8,
+                                          padding: 8,
+                                          color: colors.text,
+                                          textAlign: "center",
+                                          fontSize: 13,
+                                          width: 52,
+                                          marginBottom: 4,
+                                        }}
+                                      />
+                                      <TextInput
+                                        value={(cEx.peso ?? [])[ri] ?? ""}
+                                        onChangeText={(v) =>
+                                          updateCircuitExPeso(dayIdx, circIdx, exIdx, ri, v)
+                                        }
+                                        placeholder="kg"
+                                        placeholderTextColor={colors.textDisabled}
+                                        style={{
+                                          backgroundColor: colors.surface,
+                                          borderRadius: 8,
+                                          padding: 8,
+                                          color: colors.text,
+                                          textAlign: "center",
+                                          fontSize: 13,
+                                          width: 52,
+                                        }}
+                                      />
+                                    </View>
+                                  ))}
+                                </ScrollView>
+                              </View>
                             </View>
                           ))}
 
@@ -787,23 +903,25 @@ export default function RoutineCreatorModal({
                 </View>
               ))}
 
-              {/* Add day button */}
-              <TouchableOpacity
-                onPress={addDay}
-                style={{
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderStyle: "dashed",
-                  borderRadius: 14,
-                  padding: 16,
-                  alignItems: "center",
-                  marginBottom: 20,
-                }}
-              >
-                <Text style={{ color: colors.accent, fontWeight: "600" }}>
-                  + Agregar día
-                </Text>
-              </TouchableOpacity>
+              {/* Add day button — hidden for daily routines */}
+              {newRoutineType !== "daily" && (
+                <TouchableOpacity
+                  onPress={addDay}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderStyle: "dashed",
+                    borderRadius: 14,
+                    padding: 16,
+                    alignItems: "center",
+                    marginBottom: 20,
+                  }}
+                >
+                  <Text style={{ color: colors.accent, fontWeight: "600" }}>
+                    + Agregar día
+                  </Text>
+                </TouchableOpacity>
+              )}
             </ScrollView>
           </KeyboardAvoidingView>
 

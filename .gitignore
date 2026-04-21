@@ -32,11 +32,14 @@ yarn-error.*
 
 # local env files
 .env*.local
+.claude
 
 # typescript
 *.tsbuildinfo
 
 app-example
+supabase/*
+scripts/*
 
 # generated native folders
 /ios

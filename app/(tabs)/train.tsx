@@ -9,6 +9,7 @@ import { ROUTINE_TYPE_LABELS, type Routine, type RoutineDay } from "@/types/rout
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
+  Alert,
   ActivityIndicator,
   Pressable,
   ScrollView,
@@ -126,6 +127,25 @@ export default function TrainScreen() {
     fetchRoutines();
   };
 
+  const deleteRoutine = (routine: Routine) => {
+    Alert.alert(
+      "Eliminar rutina",
+      `¿Seguro que querés eliminar "${routine.data.nombre}"? Esta acción no se puede deshacer.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            await supabase.from("routines").delete().eq("id", routine.id);
+            if (detailRoutine?.id === routine.id) setDetailRoutine(null);
+            fetchRoutines();
+          },
+        },
+      ],
+    );
+  };
+
   const skipDay = async (routine: Routine, dayIndex: number) => {
     const skipped = routine.progress?.skipped_days ?? [];
     if (skipped.includes(dayIndex)) return;
@@ -210,7 +230,11 @@ export default function TrainScreen() {
               {next.day.dia}
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
-              {next.day.enfoque} · {next.day.ejercicios.length} ejercicios
+              {[
+                next.day.enfoque,
+                next.day.ejercicios.length > 0 ? `${next.day.ejercicios.length} ejercicios` : null,
+                (next.day.circuitos ?? []).length > 0 ? `${(next.day.circuitos ?? []).length} circuito${(next.day.circuitos ?? []).length !== 1 ? "s" : ""}` : null,
+              ].filter(Boolean).join(" · ")}
             </Text>
           </View>
           <View
@@ -227,15 +251,24 @@ export default function TrainScreen() {
           </View>
         </Pressable>
 
-        {/* Skip link — only when there's a proper next day (not a skipped fallback) */}
-        {!next.isSkippedFallback && (
+        {/* Bottom row: skip (non-daily) or delete (daily) */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 8 }}>
+          {routine.type !== "daily" && !next.isSkippedFallback && (
+            <TouchableOpacity
+              onPress={() => skipDay(routine, next.index)}
+              style={{ padding: 4 }}
+            >
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Saltar este día →</Text>
+            </TouchableOpacity>
+          )}
+          <View style={{ flex: 1 }} />
           <TouchableOpacity
-            onPress={() => skipDay(routine, next.index)}
-            style={{ alignSelf: "flex-end", marginTop: 8, padding: 4 }}
+            onPress={() => deleteRoutine(routine)}
+            style={{ padding: 4 }}
           >
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>Saltar este día →</Text>
+            <Text style={{ color: colors.error, fontSize: 12 }}>Eliminar rutina</Text>
           </TouchableOpacity>
-        )}
+        </View>
       </TouchableOpacity>
     );
   };
@@ -492,6 +525,7 @@ export default function TrainScreen() {
         }}
         onSkipDay={(idx) => { if (detailRoutine) skipDay(detailRoutine, idx); }}
         onUnskipDay={(idx) => { if (detailRoutine) unskipDay(detailRoutine, idx); }}
+        onDelete={() => { if (detailRoutine) deleteRoutine(detailRoutine); }}
       />
 
       <DayPreviewModal

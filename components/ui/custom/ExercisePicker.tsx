@@ -1,9 +1,11 @@
+import { useTheme } from "@/context/theme-context";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   Text,
   TextInput,
@@ -19,6 +21,148 @@ export type LibraryExercise = {
   equipment: string;
 };
 
+type FilterDropdownProps = {
+  label: string;
+  value: string | null;
+  options: string[];
+  onChange: (v: string | null) => void;
+};
+
+function FilterDropdown({ label, value, options, onChange }: FilterDropdownProps) {
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(false);
+  const active = value !== null;
+
+  return (
+    <>
+      <TouchableOpacity
+        onPress={() => setOpen(true)}
+        style={{
+          flex: 1,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          backgroundColor: active ? colors.accentBg : colors.card,
+          borderRadius: 8,
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+          borderWidth: 1,
+          borderColor: active ? colors.accent : colors.border,
+        }}
+      >
+        <Text
+          style={{
+            color: active ? colors.accent : colors.textMuted,
+            fontSize: 13,
+            fontWeight: active ? "700" : "400",
+            flex: 1,
+          }}
+          numberOfLines={1}
+        >
+          {value ?? label}
+        </Text>
+        <Text style={{ color: active ? colors.accent : colors.textMuted, fontSize: 9, marginLeft: 4 }}>
+          ▼
+        </Text>
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="slide">
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}
+          onPress={() => setOpen(false)}
+        >
+          <Pressable>
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                borderTopWidth: 1,
+                borderLeftWidth: 1,
+                borderRightWidth: 1,
+                borderColor: colors.border,
+                maxHeight: 420,
+              }}
+            >
+              <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 4 }}>
+                <View
+                  style={{
+                    width: 36,
+                    height: 4,
+                    borderRadius: 2,
+                    backgroundColor: colors.border,
+                    marginBottom: 12,
+                  }}
+                />
+                <Text style={{ color: colors.textMuted, fontSize: 11, letterSpacing: 1 }}>
+                  {label.toUpperCase()}
+                </Text>
+              </View>
+              <ScrollView>
+                <TouchableOpacity
+                  onPress={() => { onChange(null); setOpen(false); }}
+                  style={{
+                    paddingVertical: 15,
+                    paddingHorizontal: 24,
+                    backgroundColor: value === null ? colors.accentBg : "transparent",
+                    borderTopWidth: 1,
+                    borderTopColor: colors.border,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: value === null ? colors.accent : colors.text,
+                      fontSize: 16,
+                      fontWeight: value === null ? "700" : "400",
+                    }}
+                  >
+                    Todos
+                  </Text>
+                  {value === null && <Text style={{ color: colors.accent, fontSize: 16 }}>✓</Text>}
+                </TouchableOpacity>
+                {options.map((opt) => {
+                  const selected = value === opt;
+                  return (
+                    <TouchableOpacity
+                      key={opt}
+                      onPress={() => { onChange(opt); setOpen(false); }}
+                      style={{
+                        paddingVertical: 15,
+                        paddingHorizontal: 24,
+                        backgroundColor: selected ? colors.accentBg : "transparent",
+                        borderTopWidth: 1,
+                        borderTopColor: colors.border,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: selected ? colors.accent : colors.text,
+                          fontSize: 16,
+                          fontWeight: selected ? "700" : "400",
+                        }}
+                      >
+                        {opt}
+                      </Text>
+                      {selected && <Text style={{ color: colors.accent, fontSize: 16 }}>✓</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+                <View style={{ height: Platform.OS === "ios" ? 34 : 16 }} />
+              </ScrollView>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 type Props = {
   visible: boolean;
   onClose: () => void;
@@ -27,7 +171,7 @@ type Props = {
   multiSelect?: boolean;
   library: LibraryExercise[];
   loading?: boolean;
-  alreadyAdded?: string[]; // exercise ids already in session/day
+  alreadyAdded?: string[];
   title?: string;
 };
 
@@ -42,6 +186,7 @@ export default function ExercisePicker({
   alreadyAdded = [],
   title = "Agregar ejercicio",
 }: Props) {
+  const { colors } = useTheme();
   const [search, setSearch] = useState("");
   const [muscleFilter, setMuscleFilter] = useState<string | null>(null);
   const [equipFilter, setEquipFilter] = useState<string | null>(null);
@@ -101,8 +246,8 @@ export default function ExercisePicker({
 
   return (
     <Modal visible={visible} animationType="slide">
-      <View style={{ flex: 1, backgroundColor: "#0A0F1A" }}>
-        {/* ── Header ── */}
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        {/* Header */}
         <View
           style={{
             flexDirection: "row",
@@ -111,108 +256,62 @@ export default function ExercisePicker({
             padding: 20,
             paddingTop: Platform.OS === "ios" ? 60 : 40,
             borderBottomWidth: 1,
-            borderBottomColor: "#1C2535",
+            borderBottomColor: colors.tabBorder,
           }}
         >
-          <Text style={{ color: "white", fontSize: 20, fontWeight: "700" }}>
+          <Text style={{ color: colors.text, fontSize: 20, fontWeight: "700" }}>
             {title}
           </Text>
           <TouchableOpacity onPress={handleClose}>
-            <Text style={{ color: "#888", fontSize: 16 }}>Cerrar</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 16 }}>Cerrar</Text>
           </TouchableOpacity>
         </View>
 
-        {/* ── Search ── */}
+        {/* Search */}
         <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 }}>
           <TextInput
             value={search}
             onChangeText={setSearch}
             placeholder="Buscar por nombre o músculo..."
-            placeholderTextColor="#555"
+            placeholderTextColor={colors.textDisabled}
             style={{
-              backgroundColor: "#111827",
+              backgroundColor: colors.card,
               borderRadius: 10,
               padding: 12,
-              color: "white",
+              color: colors.text,
               borderWidth: 1,
-              borderColor: "#1E293B",
+              borderColor: colors.border,
               fontSize: 14,
             }}
           />
         </View>
 
-        {/* ── Muscle group chips ── */}
-        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-          <Text style={{ color: "#555", fontSize: 10, letterSpacing: 1, marginBottom: 8 }}>
-            MÚSCULO
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {muscleGroups.map((mg) => {
-              const active = muscleFilter === mg;
-              return (
-                <TouchableOpacity
-                  key={mg}
-                  onPress={() => setMuscleFilter(active ? null : mg)}
-                  style={{
-                    backgroundColor: active ? "#6EE7B7" : "#111827",
-                    borderRadius: 20,
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
-                    marginRight: 8,
-                    borderWidth: 1,
-                    borderColor: active ? "#6EE7B7" : "#1E293B",
-                  }}
-                >
-                  <Text style={{ color: active ? "#0A0F1A" : "#888", fontSize: 12, fontWeight: "600" }}>
-                    {mg}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+        {/* Filter dropdowns */}
+        <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingBottom: 12 }}>
+          <FilterDropdown
+            label="Músculo"
+            value={muscleFilter}
+            options={muscleGroups}
+            onChange={setMuscleFilter}
+          />
+          <FilterDropdown
+            label="Equipamiento"
+            value={equipFilter}
+            options={equipments}
+            onChange={setEquipFilter}
+          />
         </View>
 
-        {/* ── Equipment chips ── */}
-        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-          <Text style={{ color: "#555", fontSize: 10, letterSpacing: 1, marginBottom: 8 }}>
-            EQUIPAMIENTO
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {equipments.map((eq) => {
-              const active = equipFilter === eq;
-              return (
-                <TouchableOpacity
-                  key={eq}
-                  onPress={() => setEquipFilter(active ? null : eq)}
-                  style={{
-                    backgroundColor: active ? "#2563EB" : "#111827",
-                    borderRadius: 20,
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
-                    marginRight: 8,
-                    borderWidth: 1,
-                    borderColor: active ? "#2563EB" : "#1E293B",
-                  }}
-                >
-                  <Text style={{ color: active ? "white" : "#888", fontSize: 12, fontWeight: "600" }}>
-                    {eq}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* ── Results count ── */}
+        {/* Results count */}
         {!loading && (muscleFilter || equipFilter || search.trim()) && (
-          <Text style={{ color: "#555", fontSize: 11, paddingHorizontal: 16, marginBottom: 6 }}>
+          <Text style={{ color: colors.textMuted, fontSize: 11, paddingHorizontal: 16, marginBottom: 6 }}>
             {filtered.length} resultado{filtered.length !== 1 ? "s" : ""}
           </Text>
         )}
 
-        {/* ── Exercise list ── */}
+        {/* Exercise list */}
         {loading ? (
-          <ActivityIndicator color="#6EE7B7" style={{ marginTop: 20 }} />
+          <ActivityIndicator color={colors.accent} style={{ marginTop: 20 }} />
         ) : (
           <FlatList
             data={filtered}
@@ -233,14 +332,24 @@ export default function ExercisePicker({
                     flexDirection: "row",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    backgroundColor: isSelected ? "#0D2030" : isAdded ? "#0D1F18" : "transparent",
+                    backgroundColor: isSelected
+                      ? colors.accentBg
+                      : isAdded
+                      ? colors.surface
+                      : "transparent",
                   }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: isSelected ? "#93C5FD" : isAdded ? "#6EE7B7" : "white", fontWeight: "500", fontSize: 14 }}>
+                    <Text
+                      style={{
+                        color: isSelected ? colors.accent : isAdded ? colors.textMuted : colors.text,
+                        fontWeight: "500",
+                        fontSize: 14,
+                      }}
+                    >
                       {item.name}
                     </Text>
-                    <Text style={{ color: "#555", fontSize: 11, marginTop: 2 }}>
+                    <Text style={{ color: colors.textDisabled, fontSize: 11, marginTop: 2 }}>
                       {item.muscle_group} · {item.movement_pattern} · {item.equipment}
                     </Text>
                   </View>
@@ -251,33 +360,33 @@ export default function ExercisePicker({
                         width: 24,
                         height: 24,
                         borderRadius: 6,
-                        backgroundColor: isSelected ? "#2563EB" : "#1C2535",
+                        backgroundColor: isSelected ? colors.accent : colors.surface,
                         alignItems: "center",
                         justifyContent: "center",
                         marginLeft: 8,
                         borderWidth: 1,
-                        borderColor: isSelected ? "#2563EB" : "#2A3547",
+                        borderColor: isSelected ? colors.accent : colors.border,
                       }}
                     >
                       {isSelected && (
-                        <Text style={{ color: "white", fontSize: 13, fontWeight: "700" }}>✓</Text>
+                        <Text style={{ color: colors.accentText, fontSize: 13, fontWeight: "700" }}>✓</Text>
                       )}
                     </View>
                   ) : isAdded ? (
-                    <Text style={{ color: "#6EE7B7", fontSize: 12, marginLeft: 8 }}>Agregado</Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 12, marginLeft: 8 }}>Agregado</Text>
                   ) : (
                     <View
                       style={{
                         width: 28,
                         height: 28,
                         borderRadius: 14,
-                        backgroundColor: "#1C2535",
+                        backgroundColor: colors.surface,
                         alignItems: "center",
                         justifyContent: "center",
                         marginLeft: 8,
                       }}
                     >
-                      <Text style={{ color: "#6EE7B7", fontSize: 16, fontWeight: "700" }}>+</Text>
+                      <Text style={{ color: colors.accent, fontSize: 16, fontWeight: "700" }}>+</Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -286,7 +395,7 @@ export default function ExercisePicker({
             keyboardShouldPersistTaps="handled"
             ListEmptyComponent={
               <View style={{ alignItems: "center", paddingTop: 40 }}>
-                <Text style={{ color: "#555", fontSize: 14, textAlign: "center" }}>
+                <Text style={{ color: colors.textMuted, fontSize: 14, textAlign: "center" }}>
                   No se encontraron ejercicios
                 </Text>
                 {(muscleFilter || equipFilter) && (
@@ -294,7 +403,7 @@ export default function ExercisePicker({
                     onPress={() => { setMuscleFilter(null); setEquipFilter(null); }}
                     style={{ marginTop: 12 }}
                   >
-                    <Text style={{ color: "#6EE7B7", fontSize: 13 }}>Limpiar filtros</Text>
+                    <Text style={{ color: colors.accent, fontSize: 13 }}>Limpiar filtros</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -302,7 +411,7 @@ export default function ExercisePicker({
           />
         )}
 
-        {/* ── Multi-select confirm button ── */}
+        {/* Multi-select confirm button */}
         {multiSelect && (
           <View
             style={{
@@ -312,22 +421,22 @@ export default function ExercisePicker({
               right: 0,
               padding: 20,
               paddingBottom: Platform.OS === "ios" ? 36 : 20,
-              backgroundColor: "#0A0F1A",
+              backgroundColor: colors.bg,
               borderTopWidth: 1,
-              borderTopColor: "#1C2535",
+              borderTopColor: colors.tabBorder,
             }}
           >
             <TouchableOpacity
               onPress={handleConfirmMultiple}
               disabled={selected.size === 0}
               style={{
-                backgroundColor: selected.size > 0 ? "#2563EB" : "#1C2535",
+                backgroundColor: selected.size > 0 ? colors.accent : colors.surface,
                 borderRadius: 14,
                 padding: 16,
                 alignItems: "center",
               }}
             >
-              <Text style={{ color: "white", fontWeight: "700", fontSize: 16 }}>
+              <Text style={{ color: selected.size > 0 ? colors.accentText : colors.textMuted, fontWeight: "700", fontSize: 16 }}>
                 {selected.size > 0
                   ? `Agregar ${selected.size} ejercicio${selected.size !== 1 ? "s" : ""}`
                   : "Seleccioná ejercicios"}

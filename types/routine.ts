@@ -1,19 +1,21 @@
 // ─── Shared routine types ─────────────────────────────────────────────────────
 
-export type RoutineDayExercise = {
+export type ExerciseEntry = {
   nombre: string;
+  reps: string[];
+  peso?: string[];
+};
+
+export type RoutineDayExercise = ExerciseEntry & {
   series: number;
-  reps: string;
   descanso: string;
-  // Optional target weight: fixed kg (e.g. "80") or % of 1RM (e.g. "75%")
-  peso?: string;
 };
 
 export type RoutineCircuit = {
   nombre: string;
   rondas: number;
   descanso: string;
-  ejercicios: { nombre: string; reps: string }[];
+  ejercicios: ExerciseEntry[];
 };
 
 export type RoutineDay = {
@@ -49,6 +51,6 @@ export type Routine = {
 export const DEFAULT_EXERCISE: RoutineDayExercise = {
   nombre: "",
   series: 3,
-  reps: "10",
+  reps: ["", "", ""],
   descanso: "60s",
 };

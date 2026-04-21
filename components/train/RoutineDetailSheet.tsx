@@ -1,5 +1,5 @@
 import { useTheme } from "@/context/theme-context";
-import { ROUTINE_TYPE_LABELS, type Routine, type RoutineDay } from "@/types/routine";
+import { ROUTINE_TYPE_LABELS, type Routine, type RoutineCircuit, type RoutineDay } from "@/types/routine";
 import React from "react";
 import {
   Modal,
@@ -16,6 +16,7 @@ type Props = {
   onStartDay: (day: RoutineDay, index: number) => void;
   onSkipDay: (index: number) => void;
   onUnskipDay: (index: number) => void;
+  onDelete: () => void;
 };
 
 export default function RoutineDetailSheet({
@@ -24,6 +25,7 @@ export default function RoutineDetailSheet({
   onStartDay,
   onSkipDay,
   onUnskipDay,
+  onDelete,
 }: Props) {
   const { colors } = useTheme();
 
@@ -79,9 +81,14 @@ export default function RoutineDetailSheet({
                   {routine.data.nombre}
                 </Text>
               </View>
-              <TouchableOpacity onPress={onClose} style={{ paddingLeft: 16, paddingTop: 4 }}>
-                <Text style={{ color: colors.textMuted, fontSize: 16 }}>Cerrar</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 16, paddingTop: 4 }}>
+                <TouchableOpacity onPress={onDelete}>
+                  <Text style={{ color: colors.error, fontSize: 14 }}>Eliminar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onClose}>
+                  <Text style={{ color: colors.textMuted, fontSize: 16 }}>Cerrar</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Days list */}
@@ -173,7 +180,11 @@ export default function RoutineDetailSheet({
                           )}
                         </View>
                         <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 1 }}>
-                          {day.enfoque} · {day.ejercicios.length} ejercicios
+                          {[
+                            day.enfoque,
+                            day.ejercicios.length > 0 ? `${day.ejercicios.length} ejercicios` : null,
+                            (day.circuitos ?? []).length > 0 ? `${(day.circuitos ?? []).length} circuito${(day.circuitos ?? []).length !== 1 ? "s" : ""}` : null,
+                          ].filter(Boolean).join(" · ")}
                         </Text>
                       </View>
 
@@ -222,7 +233,7 @@ export default function RoutineDetailSheet({
                       </View>
                     </View>
 
-                    {/* Exercise list */}
+                    {/* Standalone exercises */}
                     {day.ejercicios.map((ej, ei) => (
                       <View
                         key={ei}
@@ -241,8 +252,66 @@ export default function RoutineDetailSheet({
                         </Text>
                         <Text style={{ color: colors.text, fontSize: 13, flex: 1 }}>{ej.nombre}</Text>
                         <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                          {ej.series}×{ej.reps}
+                          {ej.series}×{Array.isArray(ej.reps) ? ej.reps.join("/") : ej.reps}
                         </Text>
+                      </View>
+                    ))}
+
+                    {/* Circuits */}
+                    {(day.circuitos ?? []).map((circ: RoutineCircuit, ci) => (
+                      <View
+                        key={`circ-${ci}`}
+                        style={{
+                          marginTop: ci === 0 && day.ejercicios.length === 0 ? 0 : 8,
+                          borderTopWidth: ci === 0 && day.ejercicios.length === 0 ? 1 : 0,
+                          borderTopColor: colors.border,
+                          borderWidth: 1,
+                          borderColor: "#7C3AED44",
+                          borderRadius: 10,
+                          overflow: "hidden",
+                        }}
+                      >
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 8,
+                            paddingHorizontal: 10,
+                            paddingVertical: 7,
+                            backgroundColor: "#2E106522",
+                          }}
+                        >
+                          <Text style={{ color: "#C4B5FD", fontSize: 10, fontWeight: "800", letterSpacing: 1 }}>
+                            CIRCUITO
+                          </Text>
+                          {circ.nombre ? (
+                            <Text style={{ color: "#C4B5FD", fontSize: 12, fontWeight: "600", flex: 1 }}>
+                              {circ.nombre}
+                            </Text>
+                          ) : null}
+                          <Text style={{ color: "#C4B5FD", fontSize: 11 }}>
+                            {circ.rondas} rondas · {circ.descanso}
+                          </Text>
+                        </View>
+                        {circ.ejercicios.map((cEx, ei) => (
+                          <View
+                            key={ei}
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              paddingVertical: 6,
+                              paddingHorizontal: 10,
+                              borderTopWidth: 1,
+                              borderTopColor: colors.border,
+                            }}
+                          >
+                            <Text style={{ color: "#C4B5FD", fontSize: 12, width: 20 }}>
+                              {ei + 1}.
+                            </Text>
+                            <Text style={{ color: colors.text, fontSize: 13, flex: 1 }}>{cEx.nombre}</Text>
+                            <Text style={{ color: colors.textMuted, fontSize: 11 }}>{Array.isArray(cEx.reps) ? cEx.reps.join("/") : cEx.reps} reps</Text>
+                          </View>
+                        ))}
                       </View>
                     ))}
                   </View>
