@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -80,6 +81,7 @@ function totalVolume(log: WorkoutLog): number {
 export default function HistoryScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [logs, setLogs] = useState<WorkoutLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -111,7 +113,7 @@ export default function HistoryScreen() {
       <ScrollView
         contentContainerStyle={{
           padding: 20,
-          paddingTop: Platform.OS === "ios" ? 60 : 40,
+          paddingTop: insets.top,
           paddingBottom: 40,
         }}
       >

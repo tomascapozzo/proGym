@@ -1,5 +1,6 @@
 import type { LibraryExercise } from "@/components/ui/custom/ExercisePicker";
 import ExercisePicker from "@/components/ui/custom/ExercisePicker";
+import CircuitGroupCard from "@/components/session/CircuitGroupCard";
 import ExerciseCard from "@/components/session/ExerciseCard";
 import FinishSessionModal from "@/components/session/FinishSessionModal";
 import RestTimerModal from "@/components/session/RestTimerModal";
@@ -11,7 +12,7 @@ import { useTheme } from "@/context/theme-context";
 import { supabase } from "@/lib/supabase";
 import type { SessionExercise } from "@/types/session";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -70,7 +71,7 @@ function buildInitialExercises(
         target: targetParts.join(" · "),
         restSeconds: parseDescanso(ej.descanso ?? ""),
         sets: Array.from({ length: ej.series }, (_, i) => ({
-          reps: "",
+          reps: ej.reps?.[i] ?? "",
           weight: resolvePeso(pesoArray?.[i] ?? ej.peso, ej.nombre, oneRm) ?? "",
           rpe: "",
           done: false,
@@ -78,20 +79,21 @@ function buildInitialExercises(
       };
     });
 
-    const circuitExercises: SessionExercise[] = (day.circuitos ?? []).flatMap((circ: any) =>
+    const circuitExercises: SessionExercise[] = (day.circuitos ?? []).flatMap((circ: any, circIdx: number) =>
       (circ.ejercicios ?? []).map((cEx: any) => {
         const pesoArray: string[] | undefined = Array.isArray(cEx.peso) ? cEx.peso : undefined;
         const repsDisplay = Array.isArray(cEx.reps) ? cEx.reps.join("/") : cEx.reps;
         const firstWeight = resolvePeso(pesoArray?.[0] ?? cEx.peso, cEx.nombre, oneRm);
-        const prefix = circ.nombre ? `${circ.nombre} - ` : "";
-        const targetParts = [`${circ.rondas} rondas × ${repsDisplay}`];
+        const targetParts = [repsDisplay + " reps"];
         if (firstWeight) targetParts.push(`${firstWeight} kg`);
         return {
-          exercise_name: `${prefix}${cEx.nombre}`,
+          exercise_name: cEx.nombre,
           target: targetParts.join(" · "),
           restSeconds: parseDescanso(circ.descanso ?? ""),
+          circuitId: `circuit_${circIdx}`,
+          circuitName: circ.nombre || `Superset ${circIdx + 1}`,
           sets: Array.from({ length: circ.rondas }, (_, i) => ({
-            reps: "",
+            reps: cEx.reps?.[i] ?? "",
             weight: resolvePeso(pesoArray?.[i] ?? cEx.peso, cEx.nombre, oneRm) ?? "",
             rpe: "",
             done: false,
@@ -110,6 +112,27 @@ function buildInitialExercises(
     }));
   }
   return [];
+}
+
+// ─── Render grouping ──────────────────────────────────────────────────────────
+
+type RenderGroup =
+  | { kind: "exercise"; exIdx: number }
+  | { kind: "circuit"; circuitId: string; circuitName: string; exIndices: number[] };
+
+function buildRenderGroups(exercises: SessionExercise[]): RenderGroup[] {
+  const groups: RenderGroup[] = [];
+  const seen = new Set<string>();
+  exercises.forEach((ex, i) => {
+    if (!ex.circuitId) {
+      groups.push({ kind: "exercise", exIdx: i });
+    } else if (!seen.has(ex.circuitId)) {
+      seen.add(ex.circuitId);
+      const exIndices = exercises.map((e, idx) => (e.circuitId === ex.circuitId ? idx : -1)).filter((idx) => idx !== -1);
+      groups.push({ kind: "circuit", circuitId: ex.circuitId, circuitName: ex.circuitName ?? "Superset", exIndices });
+    }
+  });
+  return groups;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -137,13 +160,9 @@ export default function SessionScreen() {
   const [library, setLibrary] = useState<LibraryExercise[]>([]);
   const [loadingLib, setLoadingLib] = useState(false);
 
-  const initializedRef = useRef(false);
-
-  // ── On mount: start session in context if not already active ──────────────
+  // ── On mount: start session once restoration check completes ─────────────
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-
+    if (session.isRestoring) return;
     if (!session.isActive) {
       const title =
         params.type === "routine" && params.dayData
@@ -152,19 +171,20 @@ export default function SessionScreen() {
       const exercises = buildInitialExercises(params, profile?.one_rm);
       session.startSession(title, params, exercises);
     }
-  }, []);
+  }, [session.isRestoring]);
 
   // ── Exercise picker (free session) ────────────────────────────────────────
   const openAddExercise = async () => {
     if (library.length === 0) {
       setLoadingLib(true);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("exercises")
         .select("id, name, muscle_group, movement_pattern, equipment")
         .order("muscle_group")
         .order("name");
-      setLibrary(data ?? []);
       setLoadingLib(false);
+      if (error || !data) return;
+      setLibrary(data);
     }
     setAddPickerVisible(true);
   };
@@ -185,6 +205,11 @@ export default function SessionScreen() {
     setSaving(true);
     const { sessionExercises, elapsed, trackingMode, sessionParams } = session;
 
+    const { data: libraryRows } = await supabase.from("exercises").select("id, name");
+    const exerciseIdByName = new Map<string, string>(
+      (libraryRows ?? []).map((r: { id: string; name: string }) => [r.name, r.id]),
+    );
+
     const loggedExercises = sessionExercises
       .map((ex) => {
         const mode = ex.trackingMode ?? trackingMode;
@@ -198,16 +223,23 @@ export default function SessionScreen() {
                   weight: parseFloat(s.weight) || 0,
                   ...(s.rpe !== "" ? { rpe: parseFloat(s.rpe) || null } : {}),
                 }));
-        return { exercise_id: ex.exercise_id ?? null, exercise_name: ex.exercise_name, sets };
+        const resolvedId = ex.exercise_id ?? exerciseIdByName.get(ex.exercise_name) ?? null;
+        return { exercise_id: resolvedId, exercise_name: ex.exercise_name, sets };
       })
       .filter((ex) => ex.sets.length > 0);
 
     if (loggedExercises.length > 0) {
+      const routineDayName = sessionParams.dayData
+        ? (JSON.parse(sessionParams.dayData) as any).dia ?? null
+        : null;
       await supabase.from("workout_logs").insert({
         user_id: user.id,
         exercises: loggedExercises,
         duration_seconds: elapsed,
         notes: sessionNotes.trim() || null,
+        routine_id: sessionParams.routineId ?? null,
+        routine_day_index: sessionParams.dayIndex ? parseInt(sessionParams.dayIndex) : null,
+        routine_day_name: routineDayName,
       });
     }
 
@@ -279,21 +311,41 @@ export default function SessionScreen() {
           contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
           keyboardShouldPersistTaps="handled"
         >
-          {session.sessionExercises.map((ex, exIdx) => (
-            <ExerciseCard
-              key={exIdx}
-              ex={ex}
-              exIdx={exIdx}
-              globalMode={session.trackingMode}
-              colors={colors}
-              onUpdateSet={session.updateSet}
-              onToggleDone={session.toggleDone}
-              onAddSet={session.addSet}
-              onRemoveSet={session.removeSet}
-              onRemoveExercise={session.removeExercise}
-              onToggleMode={session.toggleExerciseMode}
-            />
-          ))}
+          {buildRenderGroups(session.sessionExercises).map((group) => {
+            if (group.kind === "circuit") {
+              const circuitExercises = group.exIndices.map((idx) => session.sessionExercises[idx]);
+              return (
+                <CircuitGroupCard
+                  key={`circuit_${group.circuitId}`}
+                  exercises={circuitExercises}
+                  exIndices={group.exIndices}
+                  circuitName={group.circuitName}
+                  globalMode={session.trackingMode}
+                  colors={colors}
+                  onUpdateSet={session.updateSet}
+                  onToggleDone={session.toggleDone}
+                  onAddRound={() => group.exIndices.forEach((idx) => session.addSet(idx))}
+                  onRemoveRound={(roundIdx) => group.exIndices.forEach((idx) => session.removeSet(idx, roundIdx))}
+                />
+              );
+            }
+            const ex = session.sessionExercises[group.exIdx];
+            return (
+              <ExerciseCard
+                key={`ex_${group.exIdx}`}
+                ex={ex}
+                exIdx={group.exIdx}
+                globalMode={session.trackingMode}
+                colors={colors}
+                onUpdateSet={session.updateSet}
+                onToggleDone={session.toggleDone}
+                onAddSet={session.addSet}
+                onRemoveSet={session.removeSet}
+                onRemoveExercise={session.removeExercise}
+                onToggleMode={session.toggleExerciseMode}
+              />
+            );
+          })}
 
           {session.sessionParams.type === "free" && (
             <TouchableOpacity
@@ -301,7 +353,7 @@ export default function SessionScreen() {
               style={{
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderStyle: "dashed",
+                borderStyle: "solid",
                 borderRadius: 14,
                 padding: 16,
                 alignItems: "center",

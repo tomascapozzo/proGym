@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ export default function GroupSheet({
   onLeave,
 }: Props) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [tab, setTab] = useState<Tab>("create");
   const [groupName, setGroupName] = useState("");
@@ -112,7 +114,7 @@ export default function GroupSheet({
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            paddingTop: Platform.OS === "ios" ? 56 : 36,
+            paddingTop: insets.top,
             paddingHorizontal: 20,
             paddingBottom: 16,
             borderBottomWidth: 1,

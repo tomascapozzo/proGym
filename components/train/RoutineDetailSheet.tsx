@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = {
   routine: Routine | null;
@@ -28,6 +29,7 @@ export default function RoutineDetailSheet({
   onDelete,
 }: Props) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const completed = routine?.progress?.completed_days ?? [];
   const skipped = routine?.progress?.skipped_days ?? [];
@@ -52,7 +54,7 @@ export default function RoutineDetailSheet({
                 flexDirection: "row",
                 alignItems: "flex-start",
                 justifyContent: "space-between",
-                paddingTop: Platform.OS === "ios" ? 56 : 36,
+                paddingTop: insets.top,
                 paddingHorizontal: 20,
                 paddingBottom: 16,
                 borderBottomWidth: 1,

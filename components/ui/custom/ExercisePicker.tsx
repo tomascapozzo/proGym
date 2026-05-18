@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type LibraryExercise = {
   id: string;
@@ -66,7 +67,7 @@ function FilterDropdown({ label, value, options, onChange }: FilterDropdownProps
         </Text>
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="slide">
+      <Modal visible={open} transparent animationType="slide" presentationStyle="overFullScreen">
         <Pressable
           style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}
           onPress={() => setOpen(false)}
@@ -187,6 +188,7 @@ export default function ExercisePicker({
   title = "Agregar ejercicio",
 }: Props) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
   const [muscleFilter, setMuscleFilter] = useState<string | null>(null);
   const [equipFilter, setEquipFilter] = useState<string | null>(null);
@@ -245,7 +247,7 @@ export default function ExercisePicker({
   };
 
   return (
-    <Modal visible={visible} animationType="slide">
+    <Modal visible={visible} animationType="slide" presentationStyle="overFullScreen">
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         {/* Header */}
         <View
@@ -254,7 +256,7 @@ export default function ExercisePicker({
             alignItems: "center",
             justifyContent: "space-between",
             padding: 20,
-            paddingTop: Platform.OS === "ios" ? 60 : 40,
+            paddingTop: insets.top,
             borderBottomWidth: 1,
             borderBottomColor: colors.tabBorder,
           }}

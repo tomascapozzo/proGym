@@ -39,17 +39,18 @@ export function useRoutineCreator(onSaved: () => void) {
 
   // ─── Library ─────────────────────────────────────────────────────────────
 
-  const ensureLibrary = async () => {
-    if (library.length === 0) {
-      setLoadingLibrary(true);
-      const { data } = await supabase
-        .from("exercises")
-        .select("id, name, muscle_group, movement_pattern, equipment")
-        .order("muscle_group")
-        .order("name");
-      setLibrary(data ?? []);
-      setLoadingLibrary(false);
-    }
+  const ensureLibrary = async (): Promise<boolean> => {
+    if (library.length > 0) return true;
+    setLoadingLibrary(true);
+    const { data, error } = await supabase
+      .from("exercises")
+      .select("id, name, muscle_group, movement_pattern, equipment")
+      .order("muscle_group")
+      .order("name");
+    setLoadingLibrary(false);
+    if (error || !data) return false;
+    setLibrary(data);
+    return true;
   };
 
   // ─── Routine creation ─────────────────────────────────────────────────────
@@ -183,7 +184,8 @@ export function useRoutineCreator(onSaved: () => void) {
   };
 
   const openExPickerForDay = async (dayIdx: number) => {
-    await ensureLibrary();
+    const ok = await ensureLibrary();
+    if (!ok) return;
     setExPickerDayIdx(dayIdx);
     setExPickerVisible(true);
   };
@@ -348,7 +350,8 @@ export function useRoutineCreator(onSaved: () => void) {
   };
 
   const openCircuitExPicker = async (dayIdx: number, circIdx: number) => {
-    await ensureLibrary();
+    const ok = await ensureLibrary();
+    if (!ok) return;
     setCircuitExPickerTarget({ dayIdx, circIdx });
     setCircuitExPickerVisible(true);
   };

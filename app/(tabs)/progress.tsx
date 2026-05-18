@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
@@ -194,6 +195,7 @@ function getMaxWeight(logs: WorkoutLog[], exerciseName: string): number {
 export default function ProgressScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<WorkoutLog[]>([]);
@@ -245,7 +247,7 @@ export default function ProgressScreen() {
       <ScrollView
         contentContainerStyle={{
           padding: 20,
-          paddingTop: Platform.OS === "ios" ? 60 : 40,
+          paddingTop: insets.top,
           paddingBottom: 40,
         }}
       >
@@ -534,7 +536,7 @@ export default function ProgressScreen() {
       </ScrollView>
 
       {/* ── EXERCISE PICKER MODAL ── */}
-      <Modal visible={pickerVisible} transparent animationType="slide">
+      <Modal visible={pickerVisible} transparent animationType="slide" presentationStyle="overFullScreen">
         <Pressable
           onPress={() => setPickerVisible(false)}
           style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}

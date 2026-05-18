@@ -137,7 +137,7 @@ export default function OnboardingScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#0A0F1A" }}>
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
+      <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
         {/* HEADER */}
         <Text style={{ color: "#3B82F6", fontSize: 12, marginTop: 16 }}>
           Configuración inicial
@@ -255,7 +255,7 @@ export default function OnboardingScreen() {
       </ScrollView>
 
       {/* PICKER MODAL */}
-      <Modal visible={!!currentPicker} transparent animationType="slide">
+      <Modal visible={!!currentPicker} transparent animationType="slide" presentationStyle="overFullScreen">
         <Pressable
           onPress={closePicker}
           style={{

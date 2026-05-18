@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = {
   visible: boolean;
@@ -31,6 +32,7 @@ export default function DayPreviewModal({
   onCancelConfirm,
 }: Props) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <>
@@ -59,7 +61,7 @@ export default function DayPreviewModal({
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                paddingTop: Platform.OS === "ios" ? 56 : 36,
+                paddingTop: insets.top,
                 paddingHorizontal: 20,
                 paddingBottom: 16,
                 borderBottomWidth: 1,

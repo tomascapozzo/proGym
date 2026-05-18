@@ -85,3 +85,8 @@ supabase/
 - **State and logic** should live in custom hooks, not inline in screen files — keep screen files as orchestration layers
 - **Database changes** require a new numbered migration file in `supabase/migrations/`
 - **Do not touch the AI routine generation placeholder** — it will be implemented once the rest of the app is stable
+- **The app must work on both iOS and Android** — never use iOS-only APIs without an Android fallback; always test platform-specific logic with `Platform.OS` checks. Specific rules:
+  - All `<Modal>` components must include an explicit `presentationStyle` prop: use `"overFullScreen"` for overlays/transparent modals and `"pageSheet"` for bottom-sheet style modals. Never omit `presentationStyle` — its absence causes silent iOS presentation failures when stacking modals.
+  - Never hardcode safe area insets (e.g. `paddingTop: 60`). Always derive them from `useSafeAreaInsets()` so the layout adapts correctly across iPhone SE, notch, and Dynamic Island models.
+  - `ScrollView` and `FlatList` that contain `TextInput` children must include `keyboardShouldPersistTaps="handled"` to prevent iOS from silently eating taps after keyboard dismissal.
+  - Avoid `borderStyle: "dashed"` — it is not supported on Android. Use a solid border or skip the style entirely.

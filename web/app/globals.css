@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+/* ── proGym Coach design tokens ───────────────────────────────────── */
+:root {
+  --pg-bg:          #0A0F1A;
+  --pg-card:        #111827;
+  --pg-surface:     #1C2535;
+  --pg-border:      #1E293B;
+  --pg-text:        #FFFFFF;
+  --pg-muted:       #888888;
+  --pg-disabled:    #555555;
+  --pg-accent:      #6EE7B7;
+  --pg-accent-text: #0A0F1A;
+  --pg-accent-bg:   #064E3B;
+  --pg-accent-alt:  #0D2A1F;
+  --pg-blue:        #0EA5E9;
+  --pg-purple:      #A78BFA;
+  --pg-amber:       #F59E0B;
+  --pg-green:       #4ADE80;
+  --pg-red:         #EF4444;
+}
+
+/* ── Tailwind v4 theme ─────────────────────────────────────────────── */
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --color-bg:          var(--pg-bg);
+  --color-card:        var(--pg-card);
+  --color-surface:     var(--pg-surface);
+  --color-border:      var(--pg-border);
+  --color-text:        var(--pg-text);
+  --color-muted:       var(--pg-muted);
+  --color-disabled:    var(--pg-disabled);
+  --color-accent:      var(--pg-accent);
+  --color-accent-text: var(--pg-accent-text);
+  --color-accent-bg:   var(--pg-accent-bg);
+  --color-accent-alt:  var(--pg-accent-alt);
+  --color-pg-blue:     var(--pg-blue);
+  --color-pg-purple:   var(--pg-purple);
+  --color-pg-amber:    var(--pg-amber);
+  --color-pg-green:    var(--pg-green);
+  --color-pg-red:      var(--pg-red);
+}
+
+/* ── Base ──────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { height: 100%; }
+
+body {
+  background: var(--pg-bg);
+  color: var(--pg-text);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100%;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar            { width: 4px; height: 4px; }
+::-webkit-scrollbar-track      { background: transparent; }
+::-webkit-scrollbar-thumb      { background: rgba(255,255,255,0.1); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }

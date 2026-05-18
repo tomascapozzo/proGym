@@ -1,4 +1,5 @@
 import type { SessionExercise, SetEntry } from "@/types/session";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import React, {
   createContext,
@@ -8,6 +9,17 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { AppState, type AppStateStatus } from "react-native";
+
+// ─── Storage keys ─────────────────────────────────────────────────────────────
+
+const KEYS = {
+  START_TS: "session_start_ts",
+  TITLE: "session_title",
+  PARAMS: "session_params",
+  EXERCISES: "session_exercises",
+  REST_EXPIRES_AT: "session_rest_expires_at",
+} as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,6 +37,7 @@ export type SessionParams = {
 type SessionContextType = {
   // State
   isActive: boolean;
+  isRestoring: boolean;
   sessionTitle: string;
   sessionExercises: SessionExercise[];
   sessionParams: SessionParams;
@@ -68,6 +81,7 @@ const EMPTY_PARAMS: SessionParams = { type: "free" };
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [isActive, setIsActive] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(true);
   const [sessionTitle, setSessionTitle] = useState("");
   const [sessionParams, setSessionParams] = useState<SessionParams>(EMPTY_PARAMS);
   const [sessionExercises, setSessionExercises] = useState<SessionExercise[]>([]);
@@ -79,42 +93,118 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [restRunning, setRestRunning] = useState(false);
   const [restVisible, setRestVisible] = useState(false);
 
+  // Refs for timestamp-based timer math (survive renders without causing re-renders)
+  const startTsRef = useRef<number | null>(null);
+  const restExpiresAtRef = useRef<number | null>(null);
   const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const restIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Elapsed timer — runs as long as session is active ─────────────────────
+  // ── Timer recalc helpers ──────────────────────────────────────────────────
+
+  const recalcElapsed = useCallback(() => {
+    if (startTsRef.current !== null) {
+      setElapsed(Math.floor((Date.now() - startTsRef.current) / 1000));
+    }
+  }, []);
+
+  const recalcRest = useCallback(() => {
+    if (restExpiresAtRef.current === null) return;
+    const remaining = Math.max(0, Math.ceil((restExpiresAtRef.current - Date.now()) / 1000));
+    setRestRemaining(remaining);
+    if (remaining <= 0) {
+      restExpiresAtRef.current = null;
+      setRestRunning(false);
+      if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void AsyncStorage.removeItem(KEYS.REST_EXPIRES_AT);
+    }
+  }, []);
+
+  // ── Elapsed timer — derives value from start timestamp each tick ──────────
   useEffect(() => {
     if (isActive) {
-      elapsedIntervalRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
+      elapsedIntervalRef.current = setInterval(recalcElapsed, 1000);
     } else {
       if (elapsedIntervalRef.current) clearInterval(elapsedIntervalRef.current);
     }
     return () => {
       if (elapsedIntervalRef.current) clearInterval(elapsedIntervalRef.current);
     };
-  }, [isActive]);
+  }, [isActive, recalcElapsed]);
 
-  // ── Rest timer ────────────────────────────────────────────────────────────
+  // ── Rest timer — derives remaining from absolute expiry each tick ─────────
   useEffect(() => {
     if (restRunning) {
-      restIntervalRef.current = setInterval(() => {
-        setRestRemaining((r) => {
-          if (r <= 1) {
-            setRestRunning(false);
-            clearInterval(restIntervalRef.current!);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            return 0;
-          }
-          return r - 1;
-        });
-      }, 1000);
+      restIntervalRef.current = setInterval(recalcRest, 1000);
     } else {
       if (restIntervalRef.current) clearInterval(restIntervalRef.current);
     }
     return () => {
       if (restIntervalRef.current) clearInterval(restIntervalRef.current);
     };
-  }, [restRunning]);
+  }, [restRunning, recalcRest]);
+
+  // ── Persist exercises whenever they change during an active session ────────
+  useEffect(() => {
+    if (isActive) {
+      void AsyncStorage.setItem(KEYS.EXERCISES, JSON.stringify(sessionExercises));
+    }
+  }, [sessionExercises, isActive]);
+
+  // ── AppState listener: recalculate both timers on foreground resume ────────
+  useEffect(() => {
+    const handler = (nextState: AppStateStatus) => {
+      if (nextState === "active" && startTsRef.current !== null) {
+        recalcElapsed();
+        recalcRest();
+      }
+    };
+    const sub = AppState.addEventListener("change", handler);
+    return () => sub.remove();
+  }, [recalcElapsed, recalcRest]);
+
+  // ── Session recovery on cold start ────────────────────────────────────────
+  useEffect(() => {
+    void (async () => {
+      const startTsRaw = await AsyncStorage.getItem(KEYS.START_TS);
+      if (!startTsRaw) {
+        setIsRestoring(false);
+        return;
+      }
+
+      const [title, paramsRaw, exercisesRaw, restExpiresRaw] = await Promise.all([
+        AsyncStorage.getItem(KEYS.TITLE),
+        AsyncStorage.getItem(KEYS.PARAMS),
+        AsyncStorage.getItem(KEYS.EXERCISES),
+        AsyncStorage.getItem(KEYS.REST_EXPIRES_AT),
+      ]);
+
+      const ts = parseInt(startTsRaw);
+      startTsRef.current = ts;
+
+      setSessionTitle(title ?? "");
+      setSessionParams(paramsRaw ? JSON.parse(paramsRaw) : EMPTY_PARAMS);
+      setSessionExercises(exercisesRaw ? JSON.parse(exercisesRaw) : []);
+      setElapsed(Math.floor((Date.now() - ts) / 1000));
+
+      if (restExpiresRaw) {
+        const expiresAt = parseInt(restExpiresRaw);
+        const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+        if (remaining > 0) {
+          restExpiresAtRef.current = expiresAt;
+          setRestRemaining(remaining);
+          setRestRunning(true);
+          setRestVisible(true);
+        } else {
+          void AsyncStorage.removeItem(KEYS.REST_EXPIRES_AT);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      }
+
+      setIsActive(true);
+      setIsRestoring(false);
+    })();
+  }, []);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const completedSets = sessionExercises.reduce(
@@ -130,6 +220,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   // ── Session lifecycle ─────────────────────────────────────────────────────
   const startSession = useCallback(
     (title: string, params: SessionParams, exercises: SessionExercise[]) => {
+      const ts = Date.now();
+      startTsRef.current = ts;
+      void Promise.all([
+        AsyncStorage.setItem(KEYS.START_TS, String(ts)),
+        AsyncStorage.setItem(KEYS.TITLE, title),
+        AsyncStorage.setItem(KEYS.PARAMS, JSON.stringify(params)),
+        AsyncStorage.setItem(KEYS.EXERCISES, JSON.stringify(exercises)),
+        AsyncStorage.removeItem(KEYS.REST_EXPIRES_AT),
+      ]);
+
       setSessionTitle(title);
       setSessionParams(params);
       setSessionExercises(exercises);
@@ -144,6 +244,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const clearSession = useCallback(() => {
+    startTsRef.current = null;
+    restExpiresAtRef.current = null;
+    void Promise.all([
+      AsyncStorage.removeItem(KEYS.START_TS),
+      AsyncStorage.removeItem(KEYS.TITLE),
+      AsyncStorage.removeItem(KEYS.PARAMS),
+      AsyncStorage.removeItem(KEYS.EXERCISES),
+      AsyncStorage.removeItem(KEYS.REST_EXPIRES_AT),
+    ]);
+
     setIsActive(false);
     setSessionTitle("");
     setSessionParams(EMPTY_PARAMS);
@@ -158,10 +268,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const addSet = useCallback((exIdx: number) => {
     setSessionExercises((prev) => {
       const updated = [...prev];
-      updated[exIdx] = {
-        ...updated[exIdx],
-        sets: [...updated[exIdx].sets, { reps: "", weight: "", rpe: "", done: false }],
-      };
+      const currentSets = updated[exIdx].sets;
+      const lastSet = currentSets[currentSets.length - 1];
+      const newSet: SetEntry = lastSet
+        ? { reps: lastSet.reps, weight: lastSet.weight, rpe: "", done: false }
+        : { reps: "", weight: "", rpe: "", done: false };
+      updated[exIdx] = { ...updated[exIdx], sets: [...currentSets, newSet] };
       return updated;
     });
   }, []);
@@ -187,6 +299,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const updated = [...prev];
         const sets = [...updated[exIdx].sets];
         sets[setIdx] = { ...sets[setIdx], [field]: value };
+        if (value !== "" && (field === "reps" || field === "weight")) {
+          for (let i = setIdx + 1; i < sets.length; i++) {
+            if (sets[i][field] === "") {
+              sets[i] = { ...sets[i], [field]: value };
+            }
+          }
+        }
         updated[exIdx] = { ...updated[exIdx], sets };
         return updated;
       });
@@ -204,14 +323,24 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         updated[exIdx] = { ...updated[exIdx], sets };
 
         if (!wasAlreadyDone) {
-          const restSecs = prev[exIdx].restSeconds ?? 60;
-          // Start rest after state update
-          setTimeout(() => {
-            if (restIntervalRef.current) clearInterval(restIntervalRef.current);
-            setRestRemaining(restSecs);
-            setRestRunning(true);
-            setRestVisible(true);
-          }, 0);
+          const circuitId = prev[exIdx].circuitId;
+          let shouldStartRest = true;
+          if (circuitId) {
+            const circuitExercises = updated.filter((e) => e.circuitId === circuitId);
+            shouldStartRest = circuitExercises.every((e) => e.sets[setIdx]?.done === true);
+          }
+          if (shouldStartRest) {
+            const restSecs = prev[exIdx].restSeconds ?? 60;
+            setTimeout(() => {
+              if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+              const expiresAt = Date.now() + restSecs * 1000;
+              restExpiresAtRef.current = expiresAt;
+              void AsyncStorage.setItem(KEYS.REST_EXPIRES_AT, String(expiresAt));
+              setRestRemaining(restSecs);
+              setRestRunning(true);
+              setRestVisible(true);
+            }, 0);
+          }
         }
 
         return updated;
@@ -234,12 +363,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   // ── Rest timer actions ────────────────────────────────────────────────────
   const startRest = useCallback((seconds: number) => {
     if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    const expiresAt = Date.now() + seconds * 1000;
+    restExpiresAtRef.current = expiresAt;
+    void AsyncStorage.setItem(KEYS.REST_EXPIRES_AT, String(expiresAt));
     setRestRemaining(seconds);
     setRestRunning(true);
   }, []);
 
   const autoStartRest = useCallback((seconds: number) => {
     if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    const expiresAt = Date.now() + seconds * 1000;
+    restExpiresAtRef.current = expiresAt;
+    void AsyncStorage.setItem(KEYS.REST_EXPIRES_AT, String(expiresAt));
     setRestRemaining(seconds);
     setRestRunning(true);
     setRestVisible(true);
@@ -247,19 +382,28 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const skipRest = useCallback(() => {
     if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    restExpiresAtRef.current = null;
+    void AsyncStorage.removeItem(KEYS.REST_EXPIRES_AT);
     setRestRunning(false);
     setRestRemaining(0);
     setRestVisible(false);
   }, []);
 
   const adjustRest = useCallback((delta: number) => {
-    setRestRemaining((r) => Math.max(5, r + delta));
+    setRestRemaining((r) => {
+      const newRemaining = Math.max(5, r + delta);
+      const expiresAt = Date.now() + newRemaining * 1000;
+      restExpiresAtRef.current = expiresAt;
+      void AsyncStorage.setItem(KEYS.REST_EXPIRES_AT, String(expiresAt));
+      return newRemaining;
+    });
   }, []);
 
   return (
     <SessionContext.Provider
       value={{
         isActive,
+        isRestoring,
         sessionTitle,
         sessionExercises,
         sessionParams,

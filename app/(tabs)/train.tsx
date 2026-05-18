@@ -521,7 +521,9 @@ export default function TrainScreen() {
         onStartDay={(day, idx) => {
           const routine = detailRoutine!;
           setDetailRoutine(null);
-          startDay(routine, day, idx);
+          // Delay confirm dialog until the sheet finishes its dismiss animation
+          // to avoid iOS failing to present a Modal while another is mid-dismiss.
+          setTimeout(() => startDay(routine, day, idx), 350);
         }}
         onSkipDay={(idx) => { if (detailRoutine) skipDay(detailRoutine, idx); }}
         onUnskipDay={(idx) => { if (detailRoutine) unskipDay(detailRoutine, idx); }}

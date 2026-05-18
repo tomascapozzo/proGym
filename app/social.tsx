@@ -14,10 +14,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SocialScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const social = useSocial();
 
   const [friendsVisible, setFriendsVisible] = useState(false);
@@ -39,7 +41,7 @@ export default function SocialScreen() {
       <ScrollView
         contentContainerStyle={{
           padding: 20,
-          paddingTop: Platform.OS === "ios" ? 60 : 40,
+          paddingTop: insets.top,
           paddingBottom: 40,
         }}
       >

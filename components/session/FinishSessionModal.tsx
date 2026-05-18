@@ -36,7 +36,7 @@ export default function FinishSessionModal({
   onFinish,
 }: Props) {
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="fade" presentationStyle="overFullScreen">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <Pressable
           style={{

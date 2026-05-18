@@ -1,6 +1,7 @@
 import { formatTime } from "@/types/session";
 import React from "react";
-import { ActivityIndicator, Platform, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = {
   dayTitle: string;
@@ -21,10 +22,11 @@ export default function SessionHeader({
   onFinish,
   onMinimize,
 }: Props) {
+  const insets = useSafeAreaInsets();
   return (
     <View
       style={{
-        paddingTop: Platform.OS === "ios" ? 60 : 40,
+        paddingTop: insets.top,
         paddingHorizontal: 20,
         paddingBottom: 16,
         backgroundColor: colors.bg,

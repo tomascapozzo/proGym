@@ -7,6 +7,8 @@ export type SessionExercise = {
   restSeconds?: number;
   sets: SetEntry[];
   trackingMode?: "simple" | "detailed";
+  circuitId?: string;
+  circuitName?: string;
 };
 
 export function formatTime(seconds: number): string {

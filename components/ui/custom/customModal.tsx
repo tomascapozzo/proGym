@@ -1,3 +1,4 @@
+import { useTheme } from "@/context/theme-context";
 import React from "react";
 import {
     ActivityIndicator,
@@ -26,17 +27,18 @@ export default function CustomModal({
   message,
   confirmLabel,
   cancelLabel = "Cancelar",
-  confirmColor = "#6EE7B7",
+  confirmColor,
   confirmTextColor,
   loading = false,
   onConfirm,
   onCancel,
 }: Props) {
-  const textColor =
-    confirmTextColor ?? (confirmColor === "#6EE7B7" ? "#0A0F1A" : "white");
+  const { colors } = useTheme();
+  const resolvedConfirmColor = confirmColor ?? colors.accent;
+  const textColor = confirmTextColor ?? colors.accentText;
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="fade" presentationStyle="overFullScreen">
       <View
         style={{
           flex: 1,
@@ -48,17 +50,17 @@ export default function CustomModal({
       >
         <View
           style={{
-            backgroundColor: "#111827",
+            backgroundColor: colors.card,
             borderRadius: 20,
             padding: 28,
             width: "100%",
             borderWidth: 1,
-            borderColor: "#1E293B",
+            borderColor: colors.border,
           }}
         >
           <Text
             style={{
-              color: "white",
+              color: colors.text,
               fontSize: 18,
               fontWeight: "700",
               marginBottom: 8,
@@ -68,7 +70,7 @@ export default function CustomModal({
           </Text>
           <Text
             style={{
-              color: "#888",
+              color: colors.textMuted,
               fontSize: 14,
               marginBottom: 24,
               lineHeight: 20,
@@ -81,7 +83,7 @@ export default function CustomModal({
             onPress={onConfirm}
             disabled={loading}
             style={{
-              backgroundColor: confirmColor,
+              backgroundColor: resolvedConfirmColor,
               borderRadius: 12,
               padding: 14,
               alignItems: "center",
@@ -107,10 +109,10 @@ export default function CustomModal({
               padding: 14,
               alignItems: "center",
               borderWidth: 1,
-              borderColor: "#1E293B",
+              borderColor: colors.border,
             }}
           >
-            <Text style={{ color: "#888", fontWeight: "600", fontSize: 15 }}>
+            <Text style={{ color: colors.textMuted, fontWeight: "600", fontSize: 15 }}>
               {cancelLabel}
             </Text>
           </TouchableOpacity>

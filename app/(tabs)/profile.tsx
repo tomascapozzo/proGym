@@ -544,7 +544,7 @@ export default function ProfileScreen() {
       </ScrollView>
 
       {/* ── MODAL: EDITAR INFORMACIÓN ── */}
-      <Modal visible={infoModalVisible} animationType="slide">
+      <Modal visible={infoModalVisible} animationType="slide" presentationStyle="pageSheet">
         <View
           style={[styles.modalFullContainer, { backgroundColor: colors.bg }]}
         >
@@ -613,7 +613,7 @@ export default function ProfileScreen() {
       </Modal>
 
       {/* ── MODAL: PR EXERCISE PICKER ── */}
-      <Modal visible={prPickerVisible} transparent animationType="slide">
+      <Modal visible={prPickerVisible} transparent animationType="slide" presentationStyle="overFullScreen">
         <Pressable
           onPress={() => setPrPickerVisible(false)}
           style={styles.modalBackdrop}
@@ -665,7 +665,7 @@ export default function ProfileScreen() {
       </Modal>
 
       {/* ── MODAL: 1RM EDITOR ── */}
-      <Modal visible={oneRmModalVisible} animationType="slide">
+      <Modal visible={oneRmModalVisible} animationType="slide" presentationStyle="pageSheet">
         <View style={[styles.modalFullContainer, { backgroundColor: colors.bg }]}>
           <View style={styles.modalFullHeader}>
             <Text style={styles.modalFullTitle}>Mis 1RM</Text>
@@ -726,7 +726,7 @@ export default function ProfileScreen() {
               style={{
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderStyle: "dashed",
+                borderStyle: "solid",
                 borderRadius: 12,
                 padding: 14,
                 alignItems: "center",
@@ -749,7 +749,7 @@ export default function ProfileScreen() {
       </Modal>
 
       {/* ── MODAL: EJERCICIO PICKER (1RM) ── */}
-      <Modal visible={oneRmPickerVisible} transparent animationType="slide">
+      <Modal visible={oneRmPickerVisible} transparent animationType="slide" presentationStyle="overFullScreen">
         <Pressable
           onPress={() => setOneRmPickerVisible(false)}
           style={styles.modalBackdrop}
@@ -898,7 +898,7 @@ export default function ProfileScreen() {
       )}
 
       {/* ── MODAL: FIELD PICKER ── */}
-      <Modal visible={!!currentPicker} transparent animationType="slide">
+      <Modal visible={!!currentPicker} transparent animationType="slide" presentationStyle="overFullScreen">
         <Pressable
           onPress={() => setCurrentPicker(null)}
           style={styles.modalBackdrop}

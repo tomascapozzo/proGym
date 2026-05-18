@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,7 @@ export default function AddFriendModal({
   onRemove,
 }: Props) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -115,7 +117,7 @@ export default function AddFriendModal({
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            paddingTop: Platform.OS === "ios" ? 56 : 36,
+            paddingTop: insets.top,
             paddingHorizontal: 20,
             paddingBottom: 16,
             borderBottomWidth: 1,

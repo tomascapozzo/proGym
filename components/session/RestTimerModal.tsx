@@ -24,7 +24,7 @@ export default function RestTimerModal({
   onAdjust,
 }: Props) {
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="fade" presentationStyle="overFullScreen">
       <Pressable
         onPress={onSkip}
         style={{
