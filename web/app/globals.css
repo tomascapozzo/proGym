@@ -18,6 +18,13 @@
   --pg-amber:       #F59E0B;
   --pg-green:       #4ADE80;
   --pg-red:         #EF4444;
+  /* Status backgrounds */
+  --pg-green-bg:    rgba(74, 222, 128, 0.10);
+  --pg-amber-bg:    rgba(245, 158,  11, 0.10);
+  --pg-red-bg:      rgba(239,  68,  68, 0.10);
+  --pg-blue-bg:     rgba( 14, 165, 233, 0.10);
+  /* Interactive */
+  --pg-row-hover:   rgba(255, 255, 255, 0.028);
 }
 
 /* ── Tailwind v4 theme ─────────────────────────────────────────────── */
@@ -45,6 +52,8 @@
 
 /* ── Base ──────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
+
+.pg-row:hover { background: var(--pg-row-hover) !important; }
 
 html { height: 100%; }
 

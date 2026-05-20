@@ -2,23 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Users,
-  ClipboardList,
-  BarChart2,
-  Settings,
-  LogOut,
-} from "lucide-react";
+import { LayoutDashboard, Users, ClipboardList, BarChart2, Settings, LogOut } from "lucide-react";
 
-const NAV_ITEMS = [
-  { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
-  { href: "/team",       label: "Equipo",       icon: Users           },
-  { href: "/routines",   label: "Rutinas",      icon: ClipboardList   },
-  { href: "/analytics",  label: "Analítica",    icon: BarChart2       },
-  { href: "/settings",   label: "Configuración",icon: Settings        },
-] as const;
+const NAV = [
+  { href: "/dashboard", label: "Dashboard",     icon: LayoutDashboard },
+  { href: "/team",      label: "Equipo",         icon: Users           },
+  { href: "/routines",  label: "Rutinas",        icon: ClipboardList   },
+  { href: "/analytics", label: "Analítica",      icon: BarChart2       },
+  { href: "/settings",  label: "Configuración",  icon: Settings        },
+];
 
 interface SidebarProps {
   coachName?: string;
@@ -29,76 +21,54 @@ export default function Sidebar({ coachName = "Coach", teamName = "Mi Equipo" }:
   const pathname = usePathname();
 
   return (
-    <aside
-      className="flex flex-col h-full"
-      style={{
-        width: 215,
-        flexShrink: 0,
-        background: "var(--pg-card)",
-        borderRight: "1px solid var(--pg-border)",
-      }}
-    >
-      {/* Logo */}
-      <div style={{ padding: "24px 18px", borderBottom: "1px solid var(--pg-border)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--pg-accent-bg)", border: "1px solid rgba(110,231,183,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "var(--pg-accent)" }}>
-            PG
-          </div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: "var(--pg-text)", letterSpacing: "-0.3px", lineHeight: 1.2 }}>
-              proGym <span style={{ color: "var(--pg-accent)" }}>Coach</span>
-            </div>
-            <div style={{ fontSize: 10, color: "var(--pg-muted)", letterSpacing: "0.5px", marginTop: 1 }}>{teamName}</div>
-          </div>
+    <aside style={{ width: 200, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--pg-card)", borderRight: "1px solid var(--pg-border)" }}>
+
+      {/* Brand */}
+      <div style={{ padding: "16px", borderBottom: "1px solid var(--pg-border)" }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: "var(--pg-text)", letterSpacing: "-0.3px" }}>
+          proGym <span style={{ color: "var(--pg-accent)" }}>Coach</span>
         </div>
+        <div style={{ fontSize: 10, color: "var(--pg-muted)", marginTop: 2 }}>{teamName}</div>
       </div>
 
       {/* Nav */}
-      <nav style={{ flex: 1, padding: "12px 10px", overflowY: "auto" }}>
-        <div style={{ fontSize: 9, letterSpacing: "2px", textTransform: "uppercase", color: "rgba(255,255,255,0.18)", padding: "0 8px", marginBottom: 6, marginTop: 8 }}>
+      <nav style={{ flex: 1, padding: "8px 0", overflowY: "auto" }}>
+        <div style={{ fontSize: 8, letterSpacing: "2px", textTransform: "uppercase", color: "rgba(255,255,255,0.15)", padding: "0 16px", marginBottom: 4, marginTop: 6 }}>
           Principal
         </div>
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {NAV.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
           return (
-            <Link
-              key={href}
-              href={href}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 10px",
-                borderRadius: 9,
-                marginBottom: 1,
-                fontSize: 13,
-                fontWeight: 500,
-                textDecoration: "none",
-                transition: "all 0.15s",
-                background: active ? "var(--pg-accent-bg)" : "transparent",
-                border: active ? "1px solid rgba(110,231,183,0.2)" : "1px solid transparent",
-                color: active ? "var(--pg-accent)" : "var(--pg-muted)",
-              }}
-            >
-              <Icon size={15} style={{ flexShrink: 0 }} />
+            <Link key={href} href={href} style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              padding: "7px 16px",
+              fontSize: 12,
+              fontWeight: active ? 600 : 400,
+              textDecoration: "none",
+              color: active ? "var(--pg-text)" : "var(--pg-muted)",
+              background: active ? "rgba(110,231,183,0.06)" : "transparent",
+              borderLeft: `2px solid ${active ? "var(--pg-accent)" : "transparent"}`,
+              transition: "color 0.1s, background 0.1s",
+            }}>
+              <Icon size={14} style={{ color: active ? "var(--pg-accent)" : "var(--pg-muted)", flexShrink: 0 }} />
               {label}
             </Link>
           );
         })}
       </nav>
 
-      {/* User footer */}
-      <div style={{ padding: "12px 10px", borderTop: "1px solid var(--pg-border)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 9, cursor: "pointer" }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--pg-accent-bg)", border: "1px solid rgba(110,231,183,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "var(--pg-accent)", flexShrink: 0 }}>
-            {coachName.charAt(0).toUpperCase()}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--pg-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{coachName}</div>
-            <div style={{ fontSize: 10, color: "var(--pg-muted)" }}>Entrenador</div>
-          </div>
-          <LogOut size={13} style={{ color: "var(--pg-muted)", flexShrink: 0 }} />
+      {/* User */}
+      <div style={{ padding: "10px 16px", borderTop: "1px solid var(--pg-border)", display: "flex", alignItems: "center", gap: 9 }}>
+        <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--pg-accent-bg)", border: "1px solid rgba(110,231,183,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "var(--pg-accent)", flexShrink: 0 }}>
+          {coachName.charAt(0).toUpperCase()}
         </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--pg-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{coachName}</div>
+          <div style={{ fontSize: 9, color: "var(--pg-muted)" }}>Entrenador</div>
+        </div>
+        <LogOut size={12} style={{ color: "var(--pg-muted)", cursor: "pointer", flexShrink: 0 }} />
       </div>
     </aside>
   );
