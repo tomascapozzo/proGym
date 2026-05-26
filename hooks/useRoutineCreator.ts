@@ -153,7 +153,7 @@ export function useRoutineCreator(onSaved: () => void) {
       const ejercicios = [...updated[dayIdx].ejercicios];
       const ex = ejercicios[exIdx];
       const peso = [...(ex.peso ?? Array.from({ length: ex.series }, () => ""))];
-      peso[seriesIdx] = value;
+      for (let i = seriesIdx; i < peso.length; i++) peso[i] = value;
       ejercicios[exIdx] = { ...ex, peso };
       updated[dayIdx] = { ...updated[dayIdx], ejercicios };
       return updated;
@@ -165,7 +165,7 @@ export function useRoutineCreator(onSaved: () => void) {
       const updated = [...prev];
       const ejercicios = [...updated[dayIdx].ejercicios];
       const reps = [...ejercicios[exIdx].reps];
-      reps[seriesIdx] = value;
+      for (let i = seriesIdx; i < reps.length; i++) reps[i] = value;
       ejercicios[exIdx] = { ...ejercicios[exIdx], reps };
       updated[dayIdx] = { ...updated[dayIdx], ejercicios };
       return updated;
@@ -285,7 +285,7 @@ export function useRoutineCreator(onSaved: () => void) {
       const circuitos = [...(updated[dayIdx].circuitos ?? [])];
       const ejercicios = [...circuitos[circIdx].ejercicios];
       const reps = [...ejercicios[exIdx].reps];
-      reps[seriesIdx] = value;
+      for (let i = seriesIdx; i < reps.length; i++) reps[i] = value;
       ejercicios[exIdx] = { ...ejercicios[exIdx], reps };
       circuitos[circIdx] = { ...circuitos[circIdx], ejercicios };
       updated[dayIdx] = { ...updated[dayIdx], circuitos };
@@ -306,7 +306,7 @@ export function useRoutineCreator(onSaved: () => void) {
       const ejercicios = [...circuitos[circIdx].ejercicios];
       const ex = ejercicios[exIdx];
       const peso = [...(ex.peso ?? Array.from({ length: circuitos[circIdx].rondas }, () => ""))];
-      peso[seriesIdx] = value;
+      for (let i = seriesIdx; i < peso.length; i++) peso[i] = value;
       ejercicios[exIdx] = { ...ex, peso };
       circuitos[circIdx] = { ...circuitos[circIdx], ejercicios };
       updated[dayIdx] = { ...updated[dayIdx], circuitos };

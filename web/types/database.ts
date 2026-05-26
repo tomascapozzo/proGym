@@ -1,7 +1,3 @@
-/**
- * Supabase database types — run `npx supabase gen types typescript`
- * to regenerate from your actual schema once connected.
- */
 export type Json =
   | string
   | number
@@ -10,78 +6,306 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export interface Database {
+export type Database = {
   public: {
     Tables: {
       profiles: {
         Row: {
           id: string;
-          user_id: string;
-          full_name: string | null;
-          avatar_url: string | null;
-          role: "player" | "coach" | "admin";
+          name: string;
+          username: string;
+          onboarding_completed: boolean;
+          edad: string | null;
+          profesion: string | null;
+          disponibilidad: string | null;
+          equipamiento: string | null;
+          nivel: string | null;
+          actualidad: string | null;
+          objetivo: string[] | null;
+          peso: string | null;
+          altura: string | null;
+          lesiones: string | null;
+          pr_exercises: string[];
+          one_rm: Json;
           created_at: string;
+          updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["profiles"]["Row"], "id" | "created_at">;
-        Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+        Insert: {
+          id: string;
+          name?: string;
+          username?: string;
+          onboarding_completed?: boolean;
+          edad?: string | null;
+          profesion?: string | null;
+          disponibilidad?: string | null;
+          equipamiento?: string | null;
+          nivel?: string | null;
+          actualidad?: string | null;
+          objetivo?: string[] | null;
+          peso?: string | null;
+          altura?: string | null;
+          lesiones?: string | null;
+          pr_exercises?: string[];
+          one_rm?: Json;
+        };
+        Update: {
+          name?: string;
+          username?: string;
+          onboarding_completed?: boolean;
+          edad?: string | null;
+          profesion?: string | null;
+          disponibilidad?: string | null;
+          equipamiento?: string | null;
+          nivel?: string | null;
+          actualidad?: string | null;
+          objetivo?: string[] | null;
+          peso?: string | null;
+          altura?: string | null;
+          lesiones?: string | null;
+          pr_exercises?: string[];
+          one_rm?: Json;
+        };
+        Relationships: [];
       };
-      teams: {
+      exercises: {
         Row: {
           id: string;
           name: string;
-          sport: string;
-          created_by: string;
-          invite_code: string;
+          type: string | null;
+          muscle_group: string;
+          movement_pattern: string | null;
+          equipment: string;
+          difficulty: string | null;
+          secondary_groups: string | null;
+          modalities: string | null;
+          notes: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["teams"]["Row"], "id" | "created_at">;
-        Update: Partial<Database["public"]["Tables"]["teams"]["Insert"]>;
+        Insert: {
+          name: string;
+          type?: string | null;
+          muscle_group: string;
+          movement_pattern?: string | null;
+          equipment: string;
+          difficulty?: string | null;
+          secondary_groups?: string | null;
+          modalities?: string | null;
+          notes?: string | null;
+        };
+        Update: {
+          name?: string;
+          type?: string | null;
+          muscle_group?: string;
+          movement_pattern?: string | null;
+          equipment?: string;
+          difficulty?: string | null;
+          secondary_groups?: string | null;
+          modalities?: string | null;
+          notes?: string | null;
+        };
+        Relationships: [];
       };
-      team_memberships: {
+      routines: {
         Row: {
           id: string;
-          team_id: string;
           user_id: string;
-          role: "player" | "coach";
-          position: string | null;
-          jersey_number: number | null;
-          joined_at: string;
+          data: Json;
+          type: string;
+          status: string;
+          progress: Json;
+          created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["team_memberships"]["Row"], "id" | "joined_at">;
-        Update: Partial<Database["public"]["Tables"]["team_memberships"]["Insert"]>;
-      };
-      routine_assignments: {
-        Row: {
-          id: string;
-          team_id: string;
-          routine_id: string;
-          assigned_to: string | null; // null = whole team
-          assigned_by: string;
-          assigned_at: string;
-          due_date: string | null;
+        Insert: {
+          user_id: string;
+          data?: Json;
+          type?: string;
+          status?: string;
+          progress?: Json;
         };
-        Insert: Omit<Database["public"]["Tables"]["routine_assignments"]["Row"], "id" | "assigned_at">;
-        Update: Partial<Database["public"]["Tables"]["routine_assignments"]["Insert"]>;
+        Update: {
+          user_id?: string;
+          data?: Json;
+          type?: string;
+          status?: string;
+          progress?: Json;
+        };
+        Relationships: [];
       };
       workout_logs: {
         Row: {
           id: string;
           user_id: string;
-          team_id: string | null;
-          routine_id: string | null;
-          exercises: Json;
-          duration_seconds: number;
           notes: string | null;
+          exercises: Json;
+          duration_seconds: number | null;
+          routine_id: string | null;
+          routine_day_index: number | null;
+          routine_day_name: string | null;
+          routine_share_id: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["workout_logs"]["Row"], "id" | "created_at">;
-        Update: Partial<Database["public"]["Tables"]["workout_logs"]["Insert"]>;
+        Insert: {
+          user_id: string;
+          notes?: string | null;
+          exercises?: Json;
+          duration_seconds?: number | null;
+          routine_id?: string | null;
+          routine_day_index?: number | null;
+          routine_day_name?: string | null;
+          routine_share_id?: string | null;
+        };
+        Update: {
+          user_id?: string;
+          notes?: string | null;
+          exercises?: Json;
+          duration_seconds?: number | null;
+          routine_id?: string | null;
+          routine_day_index?: number | null;
+          routine_day_name?: string | null;
+          routine_share_id?: string | null;
+        };
+        Relationships: [];
+      };
+      clubs: {
+        Row: {
+          id: string;
+          name: string;
+          description: string | null;
+          logo_url: string | null;
+          created_by: string;
+          created_at: string;
+        };
+        Insert: {
+          name: string;
+          description?: string | null;
+          logo_url?: string | null;
+          created_by: string;
+        };
+        Update: {
+          name?: string;
+          description?: string | null;
+          logo_url?: string | null;
+        };
+        Relationships: [];
+      };
+      club_members: {
+        Row: {
+          id: string;
+          club_id: string;
+          user_id: string;
+          role: "admin" | "coach" | "player";
+          status: "active" | "suspended";
+          joined_at: string;
+        };
+        Insert: {
+          club_id: string;
+          user_id: string;
+          role: "admin" | "coach" | "player";
+          status?: "active" | "suspended";
+        };
+        Update: {
+          role?: "admin" | "coach" | "player";
+          status?: "active" | "suspended";
+        };
+        Relationships: [];
+      };
+      club_groups: {
+        Row: {
+          id: string;
+          club_id: string;
+          name: string;
+          description: string | null;
+          created_by: string;
+          created_at: string;
+        };
+        Insert: {
+          club_id: string;
+          name: string;
+          description?: string | null;
+          created_by: string;
+        };
+        Update: {
+          name?: string;
+          description?: string | null;
+        };
+        Relationships: [];
+      };
+      club_group_members: {
+        Row: {
+          id: string;
+          group_id: string;
+          user_id: string;
+          added_by: string;
+          added_at: string;
+        };
+        Insert: {
+          group_id: string;
+          user_id: string;
+          added_by: string;
+        };
+        Update: {
+          group_id?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      club_invitations: {
+        Row: {
+          id: string;
+          club_id: string;
+          created_by: string;
+          code: string;
+          role: "coach" | "player";
+          max_uses: number | null;
+          uses_count: number;
+          expires_at: string | null;
+          target_group_id: string | null;
+          status: "active" | "expired" | "revoked";
+          created_at: string;
+        };
+        Insert: {
+          club_id: string;
+          created_by: string;
+          code: string;
+          role: "coach" | "player";
+          max_uses?: number | null;
+          uses_count?: number;
+          expires_at?: string | null;
+          target_group_id?: string | null;
+          status?: "active" | "expired" | "revoked";
+        };
+        Update: {
+          max_uses?: number | null;
+          uses_count?: number;
+          expires_at?: string | null;
+          target_group_id?: string | null;
+          status?: "active" | "expired" | "revoked";
+        };
+        Relationships: [];
       };
     };
-    Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      is_club_staff: {
+        Args: { p_club_id: string };
+        Returns: boolean;
+      };
+      is_club_member: {
+        Args: { p_club_id: string };
+        Returns: boolean;
+      };
+      redeem_club_invitation: {
+        Args: { p_code: string };
+        Returns: Json;
+      };
+    };
     Enums: {
-      user_role: "player" | "coach" | "admin";
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
     };
   };
-}
+};

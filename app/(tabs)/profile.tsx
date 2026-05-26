@@ -3,9 +3,9 @@ import { useTheme } from "@/context/theme-context";
 import { supabase } from "@/lib/supabase";
 import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
+import CustomModal from "@/components/ui/custom/customModal";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Dimensions,
   FlatList,
@@ -20,6 +20,7 @@ import {
   UIManager,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.78;
@@ -82,6 +83,7 @@ const pickerData: Record<
 export default function ProfileScreen() {
   const { user, profile, signOut, refreshProfile } = useAuth();
   const { colors, isDark, toggleTheme } = useTheme();
+  const insets = useSafeAreaInsets();
 
   // Editable fields mirrored from profile
   const [values, setValues] = useState<Record<string, string>>(() => ({
@@ -106,6 +108,7 @@ export default function ProfileScreen() {
 
   // ── Modals ──
   const [infoModalVisible, setInfoModalVisible] = useState(false);
+  const [signOutVisible, setSignOutVisible] = useState(false);
   const [prPickerVisible, setPrPickerVisible] = useState(false);
 
   // ── 1RM section ──
@@ -358,12 +361,7 @@ export default function ProfileScreen() {
       .eq("id", user.id);
   };
 
-  const handleSignOut = () => {
-    Alert.alert("Cerrar sesión", "¿Estás seguro?", [
-      { text: "Cancelar", style: "cancel" },
-      { text: "Salir", style: "destructive", onPress: signOut },
-    ]);
-  };
+  const handleSignOut = () => setSignOutVisible(true);
 
   const initials = profile?.name
     ? profile.name
@@ -378,7 +376,7 @@ export default function ProfileScreen() {
     (e) => prMap[e] !== undefined,
   );
 
-  const styles = getStyles(colors);
+  const styles = getStyles(colors, insets.top);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
@@ -897,6 +895,18 @@ export default function ProfileScreen() {
         </>
       )}
 
+      <CustomModal
+        visible={signOutVisible}
+        title="Cerrar sesión"
+        message="¿Seguro que querés cerrar sesión?"
+        confirmLabel="Salir"
+        confirmColor={colors.error}
+        confirmTextColor="white"
+        cancelLabel="Cancelar"
+        onConfirm={() => { setSignOutVisible(false); signOut(); }}
+        onCancel={() => setSignOutVisible(false)}
+      />
+
       {/* ── MODAL: FIELD PICKER ── */}
       <Modal visible={!!currentPicker} transparent animationType="slide" presentationStyle="overFullScreen">
         <Pressable
@@ -950,7 +960,7 @@ export default function ProfileScreen() {
   );
 }
 
-const getStyles = (colors: any) =>
+const getStyles = (colors: any, insetsTop: number = 0) =>
   StyleSheet.create({
     container: { flex: 1 },
     scroll: { padding: 20 },
@@ -1102,7 +1112,7 @@ const getStyles = (colors: any) =>
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: 20,
-      paddingTop: 64,
+      paddingTop: insetsTop + 16,
       paddingBottom: 16,
       borderBottomWidth: 1,
     },
@@ -1190,7 +1200,7 @@ const getStyles = (colors: any) =>
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: 20,
-      paddingTop: 60,
+      paddingTop: insetsTop + 16,
       paddingBottom: 16,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,

@@ -8,14 +8,10 @@ import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-nativ
 
 const SERIES_OPTIONS = Array.from({ length: 20 }, (_, i) => String(i + 1));
 
-// Circuit visual identity — intentionally fixed purple, not theme-dependent
-const C_ACCENT = "#C4B5FD";
-const C_BORDER = "#7C3AED";
-const C_BG = "#2E1065";
-
 interface CircuitCardProps {
   circ: RoutineCircuit;
   isFirst: boolean;
+  colorIdx?: number;
   onUpdate(field: keyof RoutineCircuit, value: string | number): void;
   onRemove(): void;
   onOpenExPicker(): void;
@@ -28,6 +24,7 @@ interface CircuitCardProps {
 export default function CircuitCard({
   circ,
   isFirst,
+  colorIdx = 0,
   onUpdate,
   onRemove,
   onOpenExPicker,
@@ -37,6 +34,9 @@ export default function CircuitCard({
   onUpdateExPeso,
 }: CircuitCardProps) {
   const { colors } = useTheme();
+  const palette = colors.circuitPalette;
+  const { bg: C_BG, text: C_ACCENT } = palette[colorIdx % palette.length];
+  const C_BORDER = C_ACCENT;
 
   return (
     <View

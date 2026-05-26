@@ -45,7 +45,14 @@ export function FormSquares({ form }: { form: (boolean | null)[] }) {
 }
 
 /** ACWR as a small colored number badge */
-export function AcwrBadge({ acwr }: { acwr: number }) {
+export function AcwrBadge({ acwr }: { acwr: number | null }) {
+  if (acwr === null) {
+    return (
+      <span style={{ display: "inline-block", padding: "1px 7px", borderRadius: 4, fontSize: 10, fontWeight: 700, background: "var(--pg-surface)", color: "var(--pg-muted)" }}>
+        —
+      </span>
+    );
+  }
   return (
     <span style={{
       display: "inline-block",

@@ -35,6 +35,8 @@ export interface ThemeColors {
     skipped: string; // amber — used for skipped-day states across all routine types
     done: string;    // green — used for completed-day states
   };
+  // Per-circuit accent colors — cycle through these when multiple circuits appear
+  circuitPalette: Array<{ bg: string; text: string }>;
 }
 
 // Routine type colors are fixed identity colors — intentionally the same in both themes
@@ -65,6 +67,12 @@ const dark: ThemeColors = {
   blue: "#2563EB",
   setRowBg: "#0D1117",
   routineColors: ROUTINE_COLORS,
+  circuitPalette: [
+    { bg: "#064E3B", text: "#6EE7B7" }, // green
+    { bg: "#1E3A5F", text: "#60A5FA" }, // blue
+    { bg: "#2E1065", text: "#C084FC" }, // purple
+    { bg: "#451A03", text: "#FBBF24" }, // amber
+  ],
 };
 
 const light: ThemeColors = {
@@ -86,6 +94,12 @@ const light: ThemeColors = {
   blue: "#2563EB",
   setRowBg: "#F1F5F9",
   routineColors: ROUTINE_COLORS,
+  circuitPalette: [
+    { bg: "#D1FAE5", text: "#059669" }, // green
+    { bg: "#DBEAFE", text: "#2563EB" }, // blue
+    { bg: "#EDE9FE", text: "#7C3AED" }, // purple
+    { bg: "#FEF3C7", text: "#D97706" }, // amber
+  ],
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import type { LibraryExercise } from "@/components/ui/custom/ExercisePicker";
 import ExercisePicker from "@/components/ui/custom/ExercisePicker";
 import CircuitGroupCard from "@/components/session/CircuitGroupCard";
+import DiscardSessionModal from "@/components/session/DiscardSessionModal";
 import ExerciseCard from "@/components/session/ExerciseCard";
 import FinishSessionModal from "@/components/session/FinishSessionModal";
 import RestTimerModal from "@/components/session/RestTimerModal";
@@ -56,14 +57,18 @@ function parseDescanso(s: string): number {
 function buildInitialExercises(
   params: { type?: string; dayData?: string; exercises?: string },
   oneRm?: Record<string, number>,
+  lastWeights?: Record<string, number>,
 ): SessionExercise[] {
+  const fallbackWeight = (name: string) =>
+    lastWeights?.[name] !== undefined ? String(lastWeights[name]) : "";
+
   if (params.type === "routine" && params.dayData) {
     const day = JSON.parse(params.dayData);
 
     const regularExercises: SessionExercise[] = (day.ejercicios ?? []).map((ej: any) => {
       const pesoArray: string[] | undefined = Array.isArray(ej.peso) ? ej.peso : undefined;
       const repsDisplay = Array.isArray(ej.reps) ? ej.reps.join("/") : ej.reps;
-      const firstWeight = resolvePeso(pesoArray?.[0] ?? ej.peso, ej.nombre, oneRm);
+      const firstWeight = resolvePeso(pesoArray?.[0] ?? ej.peso, ej.nombre, oneRm) ?? fallbackWeight(ej.nombre);
       const targetParts = [`${ej.series} × ${repsDisplay}`];
       if (firstWeight) targetParts.push(`${firstWeight} kg`);
       return {
@@ -72,7 +77,7 @@ function buildInitialExercises(
         restSeconds: parseDescanso(ej.descanso ?? ""),
         sets: Array.from({ length: ej.series }, (_, i) => ({
           reps: ej.reps?.[i] ?? "",
-          weight: resolvePeso(pesoArray?.[i] ?? ej.peso, ej.nombre, oneRm) ?? "",
+          weight: resolvePeso(pesoArray?.[i] ?? ej.peso, ej.nombre, oneRm) ?? fallbackWeight(ej.nombre),
           rpe: "",
           done: false,
         })),
@@ -83,7 +88,7 @@ function buildInitialExercises(
       (circ.ejercicios ?? []).map((cEx: any) => {
         const pesoArray: string[] | undefined = Array.isArray(cEx.peso) ? cEx.peso : undefined;
         const repsDisplay = Array.isArray(cEx.reps) ? cEx.reps.join("/") : cEx.reps;
-        const firstWeight = resolvePeso(pesoArray?.[0] ?? cEx.peso, cEx.nombre, oneRm);
+        const firstWeight = resolvePeso(pesoArray?.[0] ?? cEx.peso, cEx.nombre, oneRm) ?? fallbackWeight(cEx.nombre);
         const targetParts = [repsDisplay + " reps"];
         if (firstWeight) targetParts.push(`${firstWeight} kg`);
         return {
@@ -94,7 +99,7 @@ function buildInitialExercises(
           circuitName: circ.nombre || `Superset ${circIdx + 1}`,
           sets: Array.from({ length: circ.rondas }, (_, i) => ({
             reps: cEx.reps?.[i] ?? "",
-            weight: resolvePeso(pesoArray?.[i] ?? cEx.peso, cEx.nombre, oneRm) ?? "",
+            weight: resolvePeso(pesoArray?.[i] ?? cEx.peso, cEx.nombre, oneRm) ?? fallbackWeight(cEx.nombre),
             rpe: "",
             done: false,
           })),
@@ -108,7 +113,7 @@ function buildInitialExercises(
     return (JSON.parse(params.exercises) as LibraryExercise[]).map((ex) => ({
       exercise_id: ex.id,
       exercise_name: ex.name,
-      sets: [{ reps: "", weight: "", rpe: "", done: false }],
+      sets: [{ reps: "", weight: fallbackWeight(ex.name), rpe: "", done: false }],
     }));
   }
   return [];
@@ -156,6 +161,7 @@ export default function SessionScreen() {
   const [finishModalVisible, setFinishModalVisible] = useState(false);
   const [sessionNotes, setSessionNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [discardModalVisible, setDiscardModalVisible] = useState(false);
   const [addPickerVisible, setAddPickerVisible] = useState(false);
   const [library, setLibrary] = useState<LibraryExercise[]>([]);
   const [loadingLib, setLoadingLib] = useState(false);
@@ -164,12 +170,36 @@ export default function SessionScreen() {
   useEffect(() => {
     if (session.isRestoring) return;
     if (!session.isActive) {
-      const title =
-        params.type === "routine" && params.dayData
-          ? (JSON.parse(params.dayData) as any).dia
-          : "Sesión libre";
-      const exercises = buildInitialExercises(params, profile?.one_rm);
-      session.startSession(title, params, exercises);
+      const init = async () => {
+        const title =
+          params.type === "routine" && params.dayData
+            ? (JSON.parse(params.dayData) as any).dia
+            : "Sesión libre";
+
+        let lastWeights: Record<string, number> = {};
+        if (user) {
+          const { data } = await supabase
+            .from("workout_logs")
+            .select("exercises")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(30);
+          if (data) {
+            for (const log of data) {
+              for (const ex of (log.exercises ?? [])) {
+                if (lastWeights[ex.exercise_name] === undefined) {
+                  const lastSet = [...(ex.sets ?? [])].reverse().find((s: any) => s.weight > 0);
+                  if (lastSet) lastWeights[ex.exercise_name] = lastSet.weight;
+                }
+              }
+            }
+          }
+        }
+
+        const exercises = buildInitialExercises(params, profile?.one_rm, lastWeights);
+        session.startSession(title, params, exercises);
+      };
+      init();
     }
   }, [session.isRestoring]);
 
@@ -232,7 +262,7 @@ export default function SessionScreen() {
       const routineDayName = sessionParams.dayData
         ? (JSON.parse(sessionParams.dayData) as any).dia ?? null
         : null;
-      await supabase.from("workout_logs").insert({
+      let { error: insertError } = await supabase.from("workout_logs").insert({
         user_id: user.id,
         exercises: loggedExercises,
         duration_seconds: elapsed,
@@ -241,6 +271,22 @@ export default function SessionScreen() {
         routine_day_index: sessionParams.dayIndex ? parseInt(sessionParams.dayIndex) : null,
         routine_day_name: routineDayName,
       });
+      if (insertError?.code === "23503" && insertError.message.includes("routine_id")) {
+        ({ error: insertError } = await supabase.from("workout_logs").insert({
+          user_id: user.id,
+          exercises: loggedExercises,
+          duration_seconds: elapsed,
+          notes: sessionNotes.trim() || null,
+          routine_id: null,
+          routine_day_index: null,
+          routine_day_name: routineDayName,
+        }));
+      }
+      if (insertError) {
+        setSaving(false);
+        Alert.alert("Error al guardar", insertError.message);
+        return;
+      }
     }
 
     if (sessionParams.routineId && sessionParams.routineType) {
@@ -282,6 +328,15 @@ export default function SessionScreen() {
     router.replace("/(tabs)");
   };
 
+  // ── Cancel: discard session without saving ────────────────────────────────
+  const handleCancel = () => setDiscardModalVisible(true);
+
+  const handleDiscardConfirm = () => {
+    setDiscardModalVisible(false);
+    session.clearSession();
+    router.replace("/(tabs)/train");
+  };
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const alreadyAddedIds = session.sessionExercises
     .map((e) => e.exercise_id)
@@ -298,6 +353,7 @@ export default function SessionScreen() {
         colors={colors}
         onFinish={() => setFinishModalVisible(true)}
         onMinimize={handleMinimize}
+        onCancel={handleCancel}
       />
 
       <TrackingModeToggle
@@ -311,18 +367,21 @@ export default function SessionScreen() {
           contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
           keyboardShouldPersistTaps="handled"
         >
-          {buildRenderGroups(session.sessionExercises).map((group) => {
+          {buildRenderGroups(session.sessionExercises).map((group, groupIdx, allGroups) => {
             if (group.kind === "circuit") {
               const circuitExercises = group.exIndices.map((idx) => session.sessionExercises[idx]);
+              const circuitIndex = allGroups.slice(0, groupIdx + 1).filter((g) => g.kind === "circuit").length - 1;
               return (
                 <CircuitGroupCard
                   key={`circuit_${group.circuitId}`}
                   exercises={circuitExercises}
                   exIndices={group.exIndices}
                   circuitName={group.circuitName}
+                  circuitIndex={circuitIndex}
                   globalMode={session.trackingMode}
                   colors={colors}
                   onUpdateSet={session.updateSet}
+                  onFillDown={session.fillDown}
                   onToggleDone={session.toggleDone}
                   onAddRound={() => group.exIndices.forEach((idx) => session.addSet(idx))}
                   onRemoveRound={(roundIdx) => group.exIndices.forEach((idx) => session.removeSet(idx, roundIdx))}
@@ -338,6 +397,7 @@ export default function SessionScreen() {
                 globalMode={session.trackingMode}
                 colors={colors}
                 onUpdateSet={session.updateSet}
+                onFillDown={session.fillDown}
                 onToggleDone={session.toggleDone}
                 onAddSet={session.addSet}
                 onRemoveSet={session.removeSet}
@@ -386,6 +446,13 @@ export default function SessionScreen() {
         onStart={session.startRest}
         onSkip={session.skipRest}
         onAdjust={session.adjustRest}
+      />
+
+      <DiscardSessionModal
+        visible={discardModalVisible}
+        colors={colors}
+        onConfirm={handleDiscardConfirm}
+        onClose={() => setDiscardModalVisible(false)}
       />
 
       <ExercisePicker

@@ -11,6 +11,7 @@ type Props = {
   colors: any;
   onFinish: () => void;
   onMinimize: () => void;
+  onCancel: () => void;
 };
 
 export default function SessionHeader({
@@ -21,6 +22,7 @@ export default function SessionHeader({
   colors,
   onFinish,
   onMinimize,
+  onCancel,
 }: Props) {
   const insets = useSafeAreaInsets();
   return (
@@ -77,6 +79,14 @@ export default function SessionHeader({
               {completedSets !== 1 ? "s" : ""}
             </Text>
           )}
+          <TouchableOpacity
+            onPress={onCancel}
+            disabled={saving}
+            hitSlop={{ top: 6, bottom: 6, left: 0, right: 16 }}
+            style={{ marginTop: 6 }}
+          >
+            <Text style={{ color: colors.error, fontSize: 12 }}>Descartar sesión</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={{ alignItems: "flex-end" }}>

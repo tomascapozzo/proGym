@@ -1,7 +1,8 @@
 import { useAuth } from "@/context/auth-context";
 import { useTheme } from "@/context/theme-context";
+import { useClub } from "@/hooks/useClub";
 import { supabase } from "@/lib/supabase";
-import type { Routine, RoutineDay } from "@/types/routine";
+import { getNextDay, type Routine, type RoutineDay } from "@/types/routine";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -26,27 +27,11 @@ const QUOTES = [
   "Haz hoy lo que tu yo de mañana te agradecerá.",
 ];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-function getNextDay(
-  routine: Routine,
-): { day: RoutineDay; index: number; isSkippedFallback: boolean } | null {
-  const completed = routine.progress?.completed_days ?? [];
-  const skipped = routine.progress?.skipped_days ?? [];
-
-  for (let i = 0; i < routine.data.dias.length; i++) {
-    if (!completed.includes(i) && !skipped.includes(i))
-      return { day: routine.data.dias[i], index: i, isSkippedFallback: false };
-  }
-  for (let i = 0; i < routine.data.dias.length; i++) {
-    if (!completed.includes(i))
-      return { day: routine.data.dias[i], index: i, isSkippedFallback: true };
-  }
-  return null;
-}
 
 export default function HomeScreen() {
   const { user, profile } = useAuth();
   const { colors } = useTheme();
+  const { membership: clubMembership } = useClub(user?.id);
   const [routine, setRoutine] = useState<Routine | null>(null);
   const [loadingRoutine, setLoadingRoutine] = useState(true);
 
@@ -193,6 +178,48 @@ export default function HomeScreen() {
             {quote}
           </Text>
         </View>
+
+        {/* ── NO CLUB BANNER ── */}
+        {clubMembership === null && (
+          <TouchableOpacity
+            onPress={() => router.push("/(tabs)/club")}
+            activeOpacity={0.85}
+            style={{
+              marginHorizontal: 20,
+              marginBottom: 20,
+              backgroundColor: colors.accent + "12",
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: colors.accent + "35",
+              padding: 16,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <View
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 10,
+                backgroundColor: colors.accent + "20",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="people-outline" size={20} color={colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: "700", fontSize: 14 }}>
+                Unite a tu club
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 1 }}>
+                Ingresa el codigo que te dio tu coach
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+          </TouchableOpacity>
+        )}
 
         {/* ── TODAY'S WORKOUT ── */}
         <View style={{ paddingHorizontal: 20, marginBottom: 28 }}>

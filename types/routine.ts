@@ -48,6 +48,22 @@ export type Routine = {
   created_at: string;
 };
 
+export function getNextDay(
+  routine: Routine,
+): { day: RoutineDay; index: number; isSkippedFallback: boolean } | null {
+  const completed = routine.progress?.completed_days ?? [];
+  const skipped = routine.progress?.skipped_days ?? [];
+  for (let i = 0; i < routine.data.dias.length; i++) {
+    if (!completed.includes(i) && !skipped.includes(i))
+      return { day: routine.data.dias[i], index: i, isSkippedFallback: false };
+  }
+  for (let i = 0; i < routine.data.dias.length; i++) {
+    if (!completed.includes(i))
+      return { day: routine.data.dias[i], index: i, isSkippedFallback: true };
+  }
+  return null;
+}
+
 export const DEFAULT_EXERCISE: RoutineDayExercise = {
   nombre: "",
   series: 3,

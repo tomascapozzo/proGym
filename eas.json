@@ -9,8 +9,14 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "store",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "android": {
+        "distribution": "internal",
+        "buildType": "apk"
+      },
+      "ios": {
+        "distribution": "store"
+      }
     },
     "production": {
       "autoIncrement": true

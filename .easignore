@@ -1,0 +1,29 @@
+# Web dashboard
+web/
+
+# Supabase (migrations, seed, config — not needed at build time)
+supabase/
+
+# Admin panel
+admin/
+
+# Scripts
+scripts/
+
+# Landing page
+landing.html
+
+# Docs
+README.md
+Microsoft/
+
+# Dev/tooling
+android/
+.git/
+.github/
+node_modules/
+
+# Env files (EAS injects these via secrets)
+.env
+.env.local
+.env.*

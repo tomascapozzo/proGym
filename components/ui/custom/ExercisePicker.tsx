@@ -247,7 +247,7 @@ export default function ExercisePicker({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="overFullScreen">
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         {/* Header */}
         <View

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -214,12 +214,12 @@ export default function LandingPage() {
       {/* ── HERO ── */}
       <section style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "9rem 2rem 7rem", position: "relative", overflow: "hidden" }}>
         {/* dot grid */}
-        <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(rgba(110,231,183,0.07) 1px, transparent 1px)", backgroundSize: "32px 32px", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(rgba(212,168,83,0.07) 1px, transparent 1px)", backgroundSize: "32px 32px", pointerEvents: "none" }} />
         {/* glow */}
-        <div style={{ position: "absolute", top: "10%", left: "50%", transform: "translateX(-50%)", width: 700, height: 500, background: "radial-gradient(ellipse, rgba(110,231,183,0.12) 0%, transparent 68%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: "10%", left: "50%", transform: "translateX(-50%)", width: 700, height: 500, background: "radial-gradient(ellipse, rgba(212,168,83,0.12) 0%, transparent 68%)", pointerEvents: "none" }} />
 
         <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "var(--pg-accent-bg)", border: "1px solid rgba(110,231,183,0.35)", color: "var(--pg-accent)", borderRadius: 100, padding: "0.35rem 1rem", fontSize: "0.78rem", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "1.75rem" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "var(--pg-accent-bg)", border: "1px solid rgba(212,168,83,0.35)", color: "var(--pg-accent)", borderRadius: 100, padding: "0.35rem 1rem", fontSize: "0.78rem", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "1.75rem" }}>
             <span style={{ width: 6, height: 6, background: "var(--pg-accent)", borderRadius: "50%", display: "inline-block" }} />
             {c.badge}
           </div>
@@ -295,10 +295,10 @@ export default function LandingPage() {
         <div style={{ fontSize: "0.72rem", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--pg-accent)", marginBottom: "0.875rem" }}>{c.howLabel}</div>
         <h2 style={{ fontSize: "clamp(1.75rem,3vw,2.6rem)", fontWeight: 900, letterSpacing: "-0.025em", marginBottom: "3.5rem" }}>{c.howTitle}</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "2rem", position: "relative" }}>
-          <div style={{ position: "absolute", top: 27, left: "calc(16.66% + 28px)", right: "calc(16.66% + 28px)", height: 1, background: "linear-gradient(90deg, rgba(110,231,183,0.5), rgba(30,41,59,0.8))" }} />
+          <div style={{ position: "absolute", top: 27, left: "calc(16.66% + 28px)", right: "calc(16.66% + 28px)", height: 1, background: "linear-gradient(90deg, rgba(212,168,83,0.5), rgba(30,41,59,0.8))" }} />
           {c.steps.map(s => (
             <div key={s.num} style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <div style={{ width: 54, height: 54, borderRadius: "50%", background: "var(--pg-accent-bg)", border: "2px solid rgba(110,231,183,0.45)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", fontWeight: 900, color: "var(--pg-accent)", marginBottom: "1.25rem", position: "relative", zIndex: 1 }}>{s.num}</div>
+              <div style={{ width: 54, height: 54, borderRadius: "50%", background: "var(--pg-accent-bg)", border: "2px solid rgba(212,168,83,0.45)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", fontWeight: 900, color: "var(--pg-accent)", marginBottom: "1.25rem", position: "relative", zIndex: 1 }}>{s.num}</div>
               <div style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.4rem" }}>{s.title}</div>
               <div style={{ fontSize: "0.865rem", color: "var(--pg-muted)", lineHeight: 1.65 }}>{s.desc}</div>
             </div>
@@ -351,8 +351,8 @@ export default function LandingPage() {
 
       {/* ── CTA ── */}
       <section id="waitlist" style={{ padding: "6rem 2rem", maxWidth: 1100, margin: "0 auto", borderTop: "1px solid var(--pg-border)" }}>
-        <div style={{ background: "linear-gradient(140deg, var(--pg-accent-bg) 0%, var(--pg-accent-alt) 100%)", border: "1px solid rgba(110,231,183,0.2)", borderRadius: 24, padding: "5rem 2rem", textAlign: "center", position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", top: -80, left: "50%", transform: "translateX(-50%)", width: 600, height: 300, background: "radial-gradient(ellipse, rgba(110,231,183,0.1) 0%, transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ background: "linear-gradient(140deg, var(--pg-accent-bg) 0%, var(--pg-accent-alt) 100%)", border: "1px solid rgba(212,168,83,0.2)", borderRadius: 24, padding: "5rem 2rem", textAlign: "center", position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: -80, left: "50%", transform: "translateX(-50%)", width: 600, height: 300, background: "radial-gradient(ellipse, rgba(212,168,83,0.1) 0%, transparent 70%)", pointerEvents: "none" }} />
           <h2 style={{ fontSize: "clamp(1.75rem,3vw,2.5rem)", fontWeight: 900, letterSpacing: "-0.025em", marginBottom: "1rem", position: "relative" }}>{c.ctaTitle}</h2>
           <p style={{ color: "var(--pg-muted)", fontSize: "1.05rem", marginBottom: "2.25rem", position: "relative" }}>{c.ctaSub}</p>
           <div style={{ position: "relative" }}>

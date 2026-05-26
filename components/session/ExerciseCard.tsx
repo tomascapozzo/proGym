@@ -1,5 +1,5 @@
 import type { SessionExercise, SetEntry } from "@/types/session";
-import React from "react";
+import React, { useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
 type Props = {
@@ -8,6 +8,7 @@ type Props = {
   globalMode: "simple" | "detailed";
   colors: any;
   onUpdateSet: (exIdx: number, setIdx: number, field: "reps" | "weight" | "rpe", value: string) => void;
+  onFillDown: (exIdx: number, setIdx: number, field: "reps" | "weight") => void;
   onToggleDone: (exIdx: number, setIdx: number) => void;
   onAddSet: (exIdx: number) => void;
   onRemoveSet: (exIdx: number, setIdx: number) => void;
@@ -21,7 +22,9 @@ function SimpleSet({
   target,
   totalSets,
   colors,
+  isCollapsed,
   onToggle,
+  onToggleExpand,
   onRemove,
 }: {
   set: SetEntry;
@@ -29,9 +32,115 @@ function SimpleSet({
   target?: string;
   totalSets: number;
   colors: any;
+  isCollapsed: boolean;
   onToggle: () => void;
+  onToggleExpand: () => void;
   onRemove: () => void;
 }) {
+  const label = target
+    ? target.includes("×")
+      ? target.split("×")[1].trim() + " reps"
+      : target
+    : "Serie " + (setIdx + 1);
+
+  if (isCollapsed) {
+    return (
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+        <TouchableOpacity
+          onPress={onToggleExpand}
+          activeOpacity={0.7}
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            paddingVertical: 8,
+            paddingHorizontal: 10,
+            backgroundColor: colors.accentBg,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.accent + "60",
+          }}
+        >
+          <Text style={{ color: colors.accent, width: 28, fontSize: 13 }}>{setIdx + 1}</Text>
+          <Text style={{ flex: 1, color: colors.accent, fontSize: 13 }}>{label}</Text>
+          <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "700" }}>✓</Text>
+        </TouchableOpacity>
+        {totalSets > 1 && (
+          <TouchableOpacity
+            onPress={onRemove}
+            style={{
+              marginLeft: 8,
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: colors.surface,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: colors.error, fontSize: 14 }}>×</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
+
+  // Done + manually expanded: separate collapse and uncheck affordances
+  if (set.done) {
+    return (
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+        <View
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            paddingVertical: 12,
+            paddingHorizontal: 10,
+            backgroundColor: colors.accentBg,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.accent + "60",
+          }}
+        >
+          <Text style={{ color: colors.accent, width: 28, fontSize: 13 }}>{setIdx + 1}</Text>
+          <Text style={{ flex: 1, color: colors.accent, fontSize: 14 }}>{label}</Text>
+          <TouchableOpacity onPress={onToggleExpand} hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}>
+            <Text style={{ color: colors.accent, fontSize: 11, marginRight: 10 }}>▲</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onToggle}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: colors.accent,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: colors.accentText, fontWeight: "700", fontSize: 14 }}>✓</Text>
+          </TouchableOpacity>
+        </View>
+        {totalSets > 1 && (
+          <TouchableOpacity
+            onPress={onRemove}
+            style={{
+              marginLeft: 8,
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: colors.surface,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: colors.error, fontSize: 14 }}>×</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
+
   return (
     <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
       <TouchableOpacity
@@ -43,37 +152,27 @@ function SimpleSet({
           alignItems: "center",
           paddingVertical: 12,
           paddingHorizontal: 10,
-          backgroundColor: set.done ? colors.accentBg : colors.surface,
+          backgroundColor: colors.surface,
           borderRadius: 10,
           borderWidth: 1,
-          borderColor: set.done ? "#065F46" : "transparent",
+          borderColor: "transparent",
         }}
       >
-        <Text style={{ color: set.done ? "#6EE7B7" : "#555", width: 28, fontSize: 13 }}>
-          {setIdx + 1}
-        </Text>
-        <Text style={{ flex: 1, color: set.done ? "#6EE7B7" : "#888", fontSize: 14 }}>
-          {target
-            ? target.includes("×")
-              ? target.split("×")[1].trim() + " reps"
-              : target
-            : "Serie " + (setIdx + 1)}
-        </Text>
+        <Text style={{ color: colors.textDisabled, width: 28, fontSize: 13 }}>{setIdx + 1}</Text>
+        <Text style={{ flex: 1, color: colors.textMuted, fontSize: 14 }}>{label}</Text>
         <View
           style={{
             width: 34,
             height: 34,
             borderRadius: 17,
-            backgroundColor: set.done ? "#6EE7B7" : "transparent",
+            backgroundColor: "transparent",
             alignItems: "center",
             justifyContent: "center",
-            borderWidth: set.done ? 0 : 1,
-            borderColor: "#444",
+            borderWidth: 1,
+            borderColor: colors.border,
           }}
         >
-          <Text style={{ color: set.done ? "#0A0F1A" : "#555", fontWeight: "700", fontSize: 14 }}>
-            ✓
-          </Text>
+          <Text style={{ color: colors.textDisabled, fontWeight: "700", fontSize: 14 }}>✓</Text>
         </View>
       </TouchableOpacity>
       {totalSets > 1 && (
@@ -100,118 +199,203 @@ function DetailedSets({
   sets,
   exIdx,
   colors,
+  expandedSets,
+  onToggleExpand,
   onUpdate,
+  onFillDown,
   onToggle,
   onRemove,
 }: {
   sets: SetEntry[];
   exIdx: number;
   colors: any;
+  expandedSets: Set<number>;
+  onToggleExpand: (setIdx: number) => void;
   onUpdate: (setIdx: number, field: "reps" | "weight" | "rpe", value: string) => void;
+  onFillDown: (setIdx: number, field: "reps" | "weight") => void;
   onToggle: (setIdx: number) => void;
   onRemove: (setIdx: number) => void;
 }) {
+  const anyExpanded = sets.some((s, i) => !s.done || expandedSets.has(i));
+
   return (
     <>
-      <View style={{ flexDirection: "row", marginBottom: 6 }}>
-        <Text style={{ color: colors.textDisabled, fontSize: 11, width: 30 }}>#</Text>
-        <Text style={{ color: colors.textDisabled, fontSize: 11, flex: 1, textAlign: "center" }}>REPS</Text>
-        <Text style={{ color: colors.textDisabled, fontSize: 11, flex: 1, textAlign: "center" }}>PESO (kg)</Text>
-        <Text style={{ color: colors.textDisabled, fontSize: 11, width: 46, textAlign: "center" }}>RPE</Text>
-        <View style={{ width: 36 }} />
-        {sets.length > 1 && <View style={{ width: 28 }} />}
-      </View>
-      {sets.map((set, setIdx) => (
-        <View key={setIdx} style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-          <Text style={{ color: set.done ? "#6EE7B7" : "#555", width: 30, fontSize: 13 }}>
-            {setIdx + 1}
-          </Text>
-          <TextInput
-            value={set.reps}
-            onChangeText={(v) => onUpdate(setIdx, "reps", v)}
-            placeholder="0"
-            placeholderTextColor="#444"
-            keyboardType="numeric"
-            style={{
-              flex: 1,
-              backgroundColor: set.done ? colors.accentBg : colors.surface,
-              borderRadius: 8,
-              padding: 8,
-              color: colors.text,
-              textAlign: "center",
-              marginRight: 6,
-              fontSize: 15,
-            }}
-          />
-          <TextInput
-            value={set.weight}
-            onChangeText={(v) => onUpdate(setIdx, "weight", v)}
-            placeholder="0"
-            placeholderTextColor="#444"
-            keyboardType="numeric"
-            style={{
-              flex: 1,
-              backgroundColor: set.done ? colors.accentBg : colors.surface,
-              borderRadius: 8,
-              padding: 8,
-              color: colors.text,
-              textAlign: "center",
-              marginRight: 6,
-              fontSize: 15,
-            }}
-          />
-          <TextInput
-            value={set.rpe}
-            onChangeText={(v) => onUpdate(setIdx, "rpe", v)}
-            placeholder="–"
-            placeholderTextColor="#444"
-            keyboardType="numeric"
-            style={{
-              width: 46,
-              backgroundColor: set.done ? colors.accentBg : colors.surface,
-              borderRadius: 8,
-              padding: 8,
-              color: colors.text,
-              textAlign: "center",
-              marginRight: 6,
-              fontSize: 15,
-            }}
-          />
-          <TouchableOpacity
-            onPress={() => onToggle(setIdx)}
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 17,
-              backgroundColor: set.done ? colors.accent : colors.surface,
-              alignItems: "center",
-              justifyContent: "center",
-              borderWidth: set.done ? 0 : 1,
-              borderColor: "#333",
-            }}
-          >
-            <Text style={{ color: set.done ? "#0A0F1A" : "#555", fontWeight: "700", fontSize: 14 }}>
-              ✓
-            </Text>
-          </TouchableOpacity>
-          {sets.length > 1 && (
-            <TouchableOpacity
-              onPress={() => onRemove(setIdx)}
+      {anyExpanded && (
+        <View style={{ flexDirection: "row", marginBottom: 6 }}>
+          <Text style={{ color: colors.textDisabled, fontSize: 11, width: 30 }}>#</Text>
+          <Text style={{ color: colors.textDisabled, fontSize: 11, flex: 1, textAlign: "center" }}>REPS</Text>
+          <Text style={{ color: colors.textDisabled, fontSize: 11, flex: 1, textAlign: "center" }}>PESO (kg)</Text>
+          <Text style={{ color: colors.textDisabled, fontSize: 11, width: 46, textAlign: "center" }}>RPE</Text>
+          <View style={{ width: 36 }} />
+          {sets.length > 1 && <View style={{ width: 28 }} />}
+        </View>
+      )}
+      {sets.map((set, setIdx) => {
+        const isCollapsed = set.done && !expandedSets.has(setIdx);
+
+        if (isCollapsed) {
+          const summary = [
+            set.reps ? `${set.reps} reps` : null,
+            set.weight ? `${set.weight} kg` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+
+          return (
+            <View key={setIdx} style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+              <Text style={{ color: colors.accent, width: 30, fontSize: 13 }}>{setIdx + 1}</Text>
+              <TouchableOpacity
+                onPress={() => onToggleExpand(setIdx)}
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.accentBg,
+                  borderRadius: 8,
+                  padding: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginRight: 6,
+                }}
+              >
+                <Text style={{ color: colors.accent, flex: 1, fontSize: 14 }}>
+                  {summary || "Completada"}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 10 }}>▼</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => onToggle(setIdx)}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: colors.accent,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ color: colors.accentText, fontWeight: "700", fontSize: 14 }}>✓</Text>
+              </TouchableOpacity>
+              {sets.length > 1 && (
+                <TouchableOpacity
+                  onPress={() => onRemove(setIdx)}
+                  style={{
+                    marginLeft: 4,
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: colors.surface,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={{ color: colors.error, fontSize: 14 }}>×</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          );
+        }
+
+        return (
+          <View key={setIdx} style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+            {set.done ? (
+              <TouchableOpacity
+                onPress={() => onToggleExpand(setIdx)}
+                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                style={{ width: 30, alignItems: "flex-start" }}
+              >
+                <Text style={{ color: colors.accent, fontSize: 11 }}>▲</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={{ color: colors.textDisabled, width: 30, fontSize: 13 }}>{setIdx + 1}</Text>
+            )}
+            <TextInput
+              value={set.reps}
+              onChangeText={(v) => onUpdate(setIdx, "reps", v)}
+              onBlur={() => onFillDown(setIdx, "reps")}
+              placeholder="0"
+              placeholderTextColor={colors.textDisabled}
+              keyboardType="numeric"
               style={{
-                marginLeft: 4,
-                width: 28,
-                height: 28,
-                borderRadius: 14,
-                backgroundColor: colors.surface,
+                flex: 1,
+                backgroundColor: set.done ? colors.accentBg : colors.surface,
+                borderRadius: 8,
+                padding: 8,
+                color: colors.text,
+                textAlign: "center",
+                marginRight: 6,
+                fontSize: 15,
+              }}
+            />
+            <TextInput
+              value={set.weight}
+              onChangeText={(v) => onUpdate(setIdx, "weight", v)}
+              onBlur={() => onFillDown(setIdx, "weight")}
+              placeholder="0"
+              placeholderTextColor={colors.textDisabled}
+              keyboardType="numeric"
+              style={{
+                flex: 1,
+                backgroundColor: set.done ? colors.accentBg : colors.surface,
+                borderRadius: 8,
+                padding: 8,
+                color: colors.text,
+                textAlign: "center",
+                marginRight: 6,
+                fontSize: 15,
+              }}
+            />
+            <TextInput
+              value={set.rpe}
+              onChangeText={(v) => onUpdate(setIdx, "rpe", v)}
+              placeholder="–"
+              placeholderTextColor={colors.textDisabled}
+              keyboardType="numeric"
+              style={{
+                width: 46,
+                backgroundColor: set.done ? colors.accentBg : colors.surface,
+                borderRadius: 8,
+                padding: 8,
+                color: colors.text,
+                textAlign: "center",
+                marginRight: 6,
+                fontSize: 15,
+              }}
+            />
+            <TouchableOpacity
+              onPress={() => onToggle(setIdx)}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                backgroundColor: set.done ? colors.accent : colors.surface,
                 alignItems: "center",
                 justifyContent: "center",
+                borderWidth: set.done ? 0 : 1,
+                borderColor: colors.border,
               }}
             >
-              <Text style={{ color: colors.error, fontSize: 14 }}>×</Text>
+              <Text style={{ color: set.done ? colors.accentText : colors.textDisabled, fontWeight: "700", fontSize: 14 }}>
+                ✓
+              </Text>
             </TouchableOpacity>
-          )}
-        </View>
-      ))}
+            {sets.length > 1 && (
+              <TouchableOpacity
+                onPress={() => onRemove(setIdx)}
+                style={{
+                  marginLeft: 4,
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: colors.surface,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ color: colors.error, fontSize: 14 }}>×</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        );
+      })}
     </>
   );
 }
@@ -222,6 +406,7 @@ export default function ExerciseCard({
   globalMode,
   colors,
   onUpdateSet,
+  onFillDown,
   onToggleDone,
   onAddSet,
   onRemoveSet,
@@ -229,6 +414,32 @@ export default function ExerciseCard({
   onToggleMode,
 }: Props) {
   const mode = ex.trackingMode ?? globalMode;
+  const [expandedSets, setExpandedSets] = useState<Set<number>>(new Set());
+
+  const handleToggleDone = (setIdx: number) => {
+    if (ex.sets[setIdx]?.done) {
+      setExpandedSets((prev) => {
+        const next = new Set(prev);
+        next.delete(setIdx);
+        return next;
+      });
+    }
+    onToggleDone(exIdx, setIdx);
+  };
+
+  const handleToggleExpand = (setIdx: number) => {
+    setExpandedSets((prev) => {
+      const next = new Set(prev);
+      if (next.has(setIdx)) next.delete(setIdx);
+      else next.add(setIdx);
+      return next;
+    });
+  };
+
+  const handleRemoveSet = (setIdx: number) => {
+    setExpandedSets(new Set());
+    onRemoveSet(exIdx, setIdx);
+  };
 
   return (
     <View
@@ -311,17 +522,22 @@ export default function ExerciseCard({
               target={ex.target}
               totalSets={ex.sets.length}
               colors={colors}
-              onToggle={() => onToggleDone(exIdx, setIdx)}
-              onRemove={() => onRemoveSet(exIdx, setIdx)}
+              isCollapsed={set.done && !expandedSets.has(setIdx)}
+              onToggleExpand={() => handleToggleExpand(setIdx)}
+              onToggle={() => handleToggleDone(setIdx)}
+              onRemove={() => handleRemoveSet(setIdx)}
             />
           ))
         : <DetailedSets
             sets={ex.sets}
             exIdx={exIdx}
             colors={colors}
+            expandedSets={expandedSets}
+            onToggleExpand={handleToggleExpand}
             onUpdate={(setIdx, field, value) => onUpdateSet(exIdx, setIdx, field, value)}
-            onToggle={(setIdx) => onToggleDone(exIdx, setIdx)}
-            onRemove={(setIdx) => onRemoveSet(exIdx, setIdx)}
+            onFillDown={(setIdx, field) => onFillDown(exIdx, setIdx, field)}
+            onToggle={handleToggleDone}
+            onRemove={handleRemoveSet}
           />
       }
 

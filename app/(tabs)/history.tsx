@@ -223,19 +223,22 @@ export default function HistoryScreen() {
                       >
                         <StatPill
                           label={`${log.exercises.length} ejercicio${log.exercises.length !== 1 ? "s" : ""}`}
-                          color="#6EE7B7"
+                          color={colors.accent}
                         />
                         <StatPill
                           label={`${sets} serie${sets !== 1 ? "s" : ""}`}
-                          color="#6EE7B7"
+                          color={colors.accent}
                         />
+                        {log.duration_seconds != null && log.duration_seconds > 0 && (
+                          <StatPill label={formatTime(log.duration_seconds)} color={colors.accent} />
+                        )}
                       </View>
 
                       {/* Notes */}
                       {log.notes ? (
                         <Text
                           style={{
-                            color: "#888",
+                            color: colors.textMuted,
                             fontSize: 12,
                             marginTop: 8,
                             fontStyle: "italic",

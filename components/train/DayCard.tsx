@@ -160,6 +160,7 @@ export default function DayCard({
               key={`circ-${circIdx}`}
               circ={circ}
               isFirst={circIdx === 0}
+              colorIdx={circIdx}
               onUpdate={(f, v) => onUpdateCircuit(circIdx, f, v)}
               onRemove={() => onRemoveCircuit(circIdx)}
               onOpenExPicker={() => onOpenCircuitExPicker(circIdx)}
@@ -176,12 +177,12 @@ export default function DayCard({
               padding: 10,
               borderRadius: 8,
               borderWidth: 1,
-              borderColor: "#7C3AED",
+              borderColor: colors.circuitPalette[circuits.length % colors.circuitPalette.length].text,
               alignItems: "center",
               marginTop: 8,
             }}
           >
-            <Text style={{ color: "#C4B5FD", fontSize: 13 }}>+ Crear circuito</Text>
+            <Text style={{ color: colors.circuitPalette[circuits.length % colors.circuitPalette.length].text, fontSize: 13 }}>+ Crear circuito</Text>
           </TouchableOpacity>
         </View>
       )}

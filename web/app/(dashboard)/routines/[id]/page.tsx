@@ -1,220 +1,223 @@
-"use client";
-
-import { use, useState } from "react";
+import { redirect } from "next/navigation";
+import { notFound } from "next/navigation";
+import Link from "next/link";
+import { getCurrentMembership } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 import Topbar from "@/components/dashboard/Topbar";
-
-type F = (boolean | null)[];
-
-const ROUTINE = {
-  name: "Fuerza — Semana 20",
-  type: "weekly",
-  days: [
-    {
-      label: "Día 1 — Tren superior",
-      exercises: [
-        { n: 1, name: "Press de banca",  sets: 4, reps: "8-10", rest: "90s"  },
-        { n: 2, name: "Remo con barra",  sets: 4, reps: "10",   rest: "60s"  },
-        { n: 3, name: "Press militar",   sets: 3, reps: "8",    rest: "90s"  },
-        { n: 4, name: "Pull-ups",        sets: 3, reps: "Máx",  rest: "90s"  },
-        { n: 5, name: "Curl de bíceps",  sets: 3, reps: "12",   rest: "60s"  },
-        { n: 6, name: "Tríceps polea",   sets: 3, reps: "12",   rest: "60s"  },
-      ],
-    },
-    {
-      label: "Día 2 — Tren inferior",
-      exercises: [
-        { n: 1, name: "Sentadilla",        sets: 5, reps: "5",   rest: "2min" },
-        { n: 2, name: "Peso muerto",       sets: 4, reps: "6",   rest: "2min" },
-        { n: 3, name: "Prensa de pierna",  sets: 3, reps: "12",  rest: "90s"  },
-        { n: 4, name: "Extensión cuáds",   sets: 3, reps: "15",  rest: "60s"  },
-        { n: 5, name: "Curl femoral",      sets: 3, reps: "12",  rest: "60s"  },
-        { n: 6, name: "Pantorrillas",      sets: 4, reps: "20",  rest: "45s"  },
-      ],
-    },
-    {
-      label: "Día 3 — Potencia",
-      exercises: [
-        { n: 1, name: "Hang clean",       sets: 5, reps: "3",   rest: "2min" },
-        { n: 2, name: "Salto al cajón",   sets: 4, reps: "5",   rest: "90s"  },
-        { n: 3, name: "Sprint 20m",       sets: 6, reps: "1",   rest: "2min" },
-        { n: 4, name: "Lanzamiento MB",   sets: 3, reps: "8",   rest: "60s"  },
-      ],
-    },
-    {
-      label: "Día 4 — Recuperación",
-      exercises: [
-        { n: 1, name: "Foam rolling",     sets: 1, reps: "10min", rest: "—"   },
-        { n: 2, name: "Estiramientos",    sets: 1, reps: "15min", rest: "—"   },
-        { n: 3, name: "Movilidad",        sets: 3, reps: "8",     rest: "30s" },
-      ],
-    },
-  ],
-};
-
-const ASSIGNED: { init: string; name: string; days: F }[] = [
-  { init: "MG", name: "M. García",    days: [true,  true,  true,  false] as F },
-  { init: "RL", name: "R. López",     days: [true,  false, true,  null]  as F },
-  { init: "NF", name: "N. Ferreyra",  days: [true,  true,  true,  false] as F },
-  { init: "PA", name: "P. Acosta",    days: [true,  true,  null,  null]  as F },
-  { init: "JM", name: "J. Morales",   days: [false, true,  false, null]  as F },
-  { init: "CR", name: "C. Rodríguez", days: [true,  true,  true,  false] as F },
-  { init: "LT", name: "L. Torres",    days: [true,  true,  true,  null]  as F },
-  { init: "FM", name: "F. Méndez",    days: [true,  false, null,  null]  as F },
-];
+import type { RoutineDay } from "@/types/routine";
 
 const TYPE_LABELS: Record<string, string> = { daily: "Diaria", weekly: "Semanal", monthly: "Mensual" };
 const TYPE_COLOR: Record<string, string>  = { daily: "var(--pg-blue)", weekly: "var(--pg-accent)", monthly: "var(--pg-purple)" };
-const TYPE_BG: Record<string, string>     = { daily: "rgba(14,165,233,0.12)", weekly: "rgba(110,231,183,0.12)", monthly: "rgba(167,139,250,0.12)" };
+const TYPE_BG: Record<string, string>     = { daily: "rgba(14,165,233,0.12)", weekly: "rgba(212,168,83,0.12)", monthly: "rgba(167,139,250,0.12)" };
 
-const EX_COL = "28px 1fr 60px 72px 60px";
-const EX_HEADERS = ["#", "Ejercicio", "Series", "Reps", "Descanso"];
+const STATUS_LABELS: Record<string, string> = { active: "Activa", past: "Finalizada", pending_restart: "Completada" };
+
+function formatDuration(s: number | null) {
+  if (!s) return null;
+  const m = Math.round(s / 60);
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" });
+}
 
 type Props = { params: Promise<{ id: string }> };
 
-export default function RoutineDetailPage({ params }: Props) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { id } = use(params);
-  const [activeDay, setActiveDay] = useState(0);
+export default async function RoutineDetailPage({ params }: Props) {
+  const { id } = await params;
+  const { user, membership, club } = await getCurrentMembership();
+  if (!user) redirect("/auth/login");
+  if (!membership || !club) redirect("/club/new");
 
-  const day = ROUTINE.days[activeDay];
+  const supabase = await createClient();
 
-  function dayCompliance(dayIdx: number) {
-    const assigned = ASSIGNED.filter(p => p.days[dayIdx] !== null);
-    const done = assigned.filter(p => p.days[dayIdx] === true);
-    return { done: done.length, total: assigned.length, pct: assigned.length > 0 ? Math.round((done.length / assigned.length) * 100) : 0 };
-  }
+  const { data: routine } = await supabase
+    .from("routines")
+    .select("id, user_id, data, type, status, progress, created_at")
+    .eq("id", id)
+    .single();
+
+  if (!routine) notFound();
+
+  type RoutineData = { nombre: string; dias: RoutineDay[] };
+  const data = routine.data as RoutineData;
+  const dias = data.dias ?? [];
+
+  // Owner profile
+  const { data: ownerProfile } = await supabase
+    .from("profiles")
+    .select("name, username")
+    .eq("id", routine.user_id)
+    .single();
+
+  // Recent sessions using this routine
+  const { data: sessionsRaw } = await supabase
+    .from("workout_logs")
+    .select("id, created_at, duration_seconds, routine_day_index, routine_day_name, exercises")
+    .eq("routine_id", id)
+    .order("created_at", { ascending: false })
+    .limit(15);
+
+  const sessions = (sessionsRaw ?? []).map(s => ({
+    id: s.id,
+    date: formatDate(s.created_at),
+    dayName: s.routine_day_name ?? `Día ${(s.routine_day_index ?? 0) + 1}`,
+    duration: formatDuration(s.duration_seconds),
+    exercises: Array.isArray(s.exercises) ? (s.exercises as unknown[]).length : 0,
+  }));
+
+  const progress = routine.progress as { completed_days: number[]; skipped_days?: number[] } | null;
+  const completedDays = progress?.completed_days ?? [];
+
+  const EX_COL = "28px 1fr 60px 72px 60px";
 
   return (
     <>
       <Topbar
-        title={ROUTINE.name}
+        title={data.nombre || "Rutina"}
         back={{ href: "/routines", label: "Rutinas" }}
         actions={
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: TYPE_BG[ROUTINE.type], color: TYPE_COLOR[ROUTINE.type] }}>
-              {TYPE_LABELS[ROUTINE.type]}
+            <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: TYPE_BG[routine.type], color: TYPE_COLOR[routine.type] }}>
+              {TYPE_LABELS[routine.type] ?? routine.type}
             </span>
-            <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "rgba(74,222,128,0.12)", color: "var(--pg-green)" }}>
-              Activa
+            <span style={{ fontSize: 9, fontWeight: 600, padding: "3px 8px", borderRadius: 4, background: "rgba(74,222,128,0.12)", color: "var(--pg-green)" }}>
+              {STATUS_LABELS[routine.status] ?? routine.status}
             </span>
-            <button style={{ padding: "5px 12px", borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "var(--pg-accent)", border: "none", color: "var(--pg-accent-text)" }}>
-              Asignar
-            </button>
+            {ownerProfile && (
+              <span style={{ fontSize: 10, color: "var(--pg-muted)" }}>
+                {ownerProfile.name || ownerProfile.username}
+              </span>
+            )}
           </div>
         }
       />
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 280px", overflow: "hidden" }}>
 
-        {/* Day tabs */}
-        <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--pg-border)", padding: "0 20px", background: "var(--pg-card)", flexShrink: 0 }}>
-          {ROUTINE.days.map((_, i) => {
-            const active = i === activeDay;
-            const { pct, total } = dayCompliance(i);
+        {/* Left: days and exercises */}
+        <div style={{ overflowY: "auto", padding: "16px 12px 16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {dias.map((day, i) => {
+            const isDone = completedDays.includes(i);
             return (
-              <button key={i} onClick={() => setActiveDay(i)} style={{
-                padding: "10px 16px",
-                fontSize: 11,
-                fontWeight: active ? 600 : 400,
-                color: active ? "var(--pg-text)" : "var(--pg-muted)",
-                background: "transparent",
-                border: "none",
-                borderBottom: `2px solid ${active ? "var(--pg-accent)" : "transparent"}`,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                marginBottom: -1,
-                transition: "color 0.1s",
-              }}>
-                Día {i + 1}
-                {total > 0 && (
-                  <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 10, background: pct >= 80 ? "rgba(74,222,128,0.15)" : "rgba(245,158,11,0.15)", color: pct >= 80 ? "var(--pg-green)" : "var(--pg-amber)" }}>
-                    {pct}%
-                  </span>
+              <div key={i} style={{ background: "var(--pg-card)", border: `1px solid ${isDone ? "rgba(74,222,128,0.2)" : "var(--pg-border)"}`, borderRadius: 8, overflow: "hidden" }}>
+                <div style={{ padding: "9px 14px", borderBottom: "1px solid var(--pg-border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--pg-text)" }}>{day.dia || `Día ${i + 1}`}</span>
+                    {day.enfoque && (
+                      <span style={{ fontSize: 10, color: "var(--pg-muted)", marginLeft: 8 }}>{day.enfoque}</span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 10, color: "var(--pg-muted)" }}>
+                      {(day.ejercicios?.length ?? 0) + (day.circuitos?.reduce((s, c) => s + (c.ejercicios?.length ?? 0), 0) ?? 0)} ejercicios
+                    </span>
+                    {isDone && (
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "rgba(74,222,128,0.15)", color: "var(--pg-green)" }}>
+                        Completado
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Direct exercises */}
+                {(day.ejercicios?.length ?? 0) > 0 && (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: EX_COL, padding: "5px 14px", borderBottom: "1px solid var(--pg-border)", background: "rgba(0,0,0,0.2)" }}>
+                      {["#", "Ejercicio", "Series", "Reps", "Descanso"].map(h => (
+                        <span key={h} style={{ fontSize: 8, letterSpacing: "1.5px", textTransform: "uppercase", color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>{h}</span>
+                      ))}
+                    </div>
+                    {day.ejercicios!.map((ex, j) => (
+                      <div key={j} className="pg-row" style={{ display: "grid", gridTemplateColumns: EX_COL, padding: "7px 14px", borderBottom: "1px solid rgba(255,255,255,0.03)", alignItems: "center" }}>
+                        <span style={{ fontSize: 10, color: "var(--pg-disabled)", fontVariantNumeric: "tabular-nums" }}>{j + 1}</span>
+                        <span style={{ fontSize: 12, fontWeight: 500, color: "var(--pg-text)" }}>{ex.nombre}</span>
+                        <span style={{ fontSize: 11, color: "var(--pg-muted)", fontVariantNumeric: "tabular-nums" }}>{ex.series}</span>
+                        <span style={{ fontSize: 11, color: "var(--pg-muted)" }}>{ex.reps?.join(" / ") || "—"}</span>
+                        <span style={{ fontSize: 11, color: "var(--pg-muted)" }}>{ex.descanso}</span>
+                      </div>
+                    ))}
+                  </>
                 )}
-              </button>
-            );
-          })}
-        </div>
 
-        {/* Split content */}
-        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 272px", overflow: "hidden" }}>
-
-          {/* Left: exercise table */}
-          <div style={{ overflowY: "auto", padding: "16px 12px 16px 20px" }}>
-            <div style={{ background: "var(--pg-card)", border: "1px solid var(--pg-border)", borderRadius: 8, overflow: "hidden" }}>
-              <div style={{ padding: "9px 14px", borderBottom: "1px solid var(--pg-border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--pg-text)" }}>{day.label}</span>
-                <span style={{ fontSize: 10, color: "var(--pg-muted)" }}>{day.exercises.length} ejercicios</span>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: EX_COL, padding: "5px 14px", borderBottom: "1px solid var(--pg-border)", background: "rgba(0,0,0,0.2)" }}>
-                {EX_HEADERS.map(h => (
-                  <span key={h} style={{ fontSize: 8, letterSpacing: "1.5px", textTransform: "uppercase", color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>{h}</span>
+                {/* Circuits */}
+                {day.circuitos?.map((circuit, ci) => (
+                  <div key={ci}>
+                    <div style={{ padding: "7px 14px", background: "rgba(0,0,0,0.15)", borderBottom: "1px solid var(--pg-border)", display: "flex", gap: 10, alignItems: "center" }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--pg-blue)" }}>{circuit.nombre || `Circuito ${ci + 1}`}</span>
+                      <span style={{ fontSize: 9, color: "var(--pg-muted)" }}>{circuit.rondas} rondas · {circuit.descanso} descanso</span>
+                    </div>
+                    {circuit.ejercicios?.map((ex, ei) => (
+                      <div key={ei} className="pg-row" style={{ display: "grid", gridTemplateColumns: EX_COL, padding: "7px 14px 7px 28px", borderBottom: "1px solid rgba(255,255,255,0.03)", alignItems: "center" }}>
+                        <span style={{ fontSize: 10, color: "var(--pg-disabled)", fontVariantNumeric: "tabular-nums" }}>{ei + 1}</span>
+                        <span style={{ fontSize: 12, fontWeight: 500, color: "var(--pg-text)" }}>{ex.nombre}</span>
+                        <span style={{ fontSize: 11, color: "var(--pg-muted)" }}>—</span>
+                        <span style={{ fontSize: 11, color: "var(--pg-muted)" }}>{ex.reps?.join(" / ") || "—"}</span>
+                        <span style={{ fontSize: 11, color: "var(--pg-muted)" }}>—</span>
+                      </div>
+                    ))}
+                  </div>
                 ))}
               </div>
-              {day.exercises.map(ex => (
-                <div key={ex.n} className="pg-row" style={{ display: "grid", gridTemplateColumns: EX_COL, padding: "8px 14px", borderBottom: "1px solid rgba(255,255,255,0.03)", alignItems: "center", cursor: "default" }}>
-                  <span style={{ fontSize: 10, color: "var(--pg-disabled)", fontVariantNumeric: "tabular-nums" }}>{ex.n}</span>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: "var(--pg-text)" }}>{ex.name}</span>
-                  <span style={{ fontSize: 11, color: "var(--pg-muted)", fontVariantNumeric: "tabular-nums" }}>{ex.sets}</span>
-                  <span style={{ fontSize: 11, color: "var(--pg-muted)" }}>{ex.reps}</span>
-                  <span style={{ fontSize: 11, color: "var(--pg-muted)" }}>{ex.rest}</span>
+            );
+          })}
+
+          {dias.length === 0 && (
+            <div style={{ padding: 28, textAlign: "center", fontSize: 12, color: "var(--pg-muted)" }}>Esta rutina no tiene días configurados.</div>
+          )}
+        </div>
+
+        {/* Right: sessions using this routine */}
+        <div style={{ borderLeft: "1px solid var(--pg-border)", overflowY: "auto", padding: "16px 20px 16px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ background: "var(--pg-card)", border: "1px solid var(--pg-border)", borderRadius: 8, overflow: "hidden" }}>
+            <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--pg-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--pg-text)" }}>Sesiones registradas</span>
+              <span style={{ fontSize: 10, color: "var(--pg-muted)" }}>{sessions.length}</span>
+            </div>
+            {sessions.map(s => (
+              <div key={s.id} className="pg-row" style={{ padding: "9px 12px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: "var(--pg-text)" }}>{s.dayName}</span>
+                  {s.duration && <span style={{ fontSize: 10, color: "var(--pg-accent)", fontVariantNumeric: "tabular-nums" }}>{s.duration}</span>}
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Right: assigned players */}
-          <div style={{ borderLeft: "1px solid var(--pg-border)", overflowY: "auto", padding: "16px 20px 16px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
-
-            <div style={{ background: "var(--pg-card)", border: "1px solid var(--pg-border)", borderRadius: 8, overflow: "hidden" }}>
-              <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--pg-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--pg-text)" }}>Jugadores asignados</span>
-                <span style={{ fontSize: 10, color: "var(--pg-muted)" }}>{ASSIGNED.length}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+                  <span style={{ fontSize: 10, color: "var(--pg-muted)" }}>{s.date}</span>
+                  <span style={{ fontSize: 10, color: "var(--pg-muted)" }}>{s.exercises} ej.</span>
+                </div>
               </div>
-              {ASSIGNED.map(p => {
-                const status = p.days[activeDay];
-                return (
-                  <div key={p.name} className="pg-row" style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", borderBottom: "1px solid rgba(255,255,255,0.03)", cursor: "default" }}>
-                    <div style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--pg-surface)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "var(--pg-muted)", flexShrink: 0 }}>
-                      {p.init}
-                    </div>
-                    <span style={{ flex: 1, fontSize: 11, fontWeight: 500, color: "var(--pg-text)" }}>{p.name}</span>
-                    <div style={{
-                      width: 16, height: 16, borderRadius: 4,
-                      background: status === null ? "var(--pg-surface)" : status ? "rgba(74,222,128,0.15)" : "rgba(239,68,68,0.15)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 9, fontWeight: 700,
-                      color: status === null ? "transparent" : status ? "var(--pg-green)" : "var(--pg-red)",
-                    }}>
-                      {status === true && "✓"}
-                      {status === false && "✕"}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Compliance summary */}
-            <div style={{ background: "var(--pg-card)", border: "1px solid var(--pg-border)", borderRadius: 8, padding: "11px 12px" }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--pg-text)", marginBottom: 9 }}>Cumplimiento Día {activeDay + 1}</div>
-              {(() => {
-                const { done, total, pct } = dayCompliance(activeDay);
-                return (
-                  <>
-                    <div style={{ height: 4, background: "var(--pg-surface)", borderRadius: 2, overflow: "hidden", marginBottom: 7 }}>
-                      <div style={{ height: "100%", width: `${pct}%`, background: pct >= 80 ? "var(--pg-accent)" : "var(--pg-amber)", borderRadius: 2, transition: "width 0.3s" }} />
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: 10, color: "var(--pg-muted)" }}>{done} de {total} completado</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: pct >= 80 ? "var(--pg-accent)" : "var(--pg-amber)", fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
+            ))}
+            {sessions.length === 0 && (
+              <div style={{ padding: "20px 12px", textAlign: "center", fontSize: 11, color: "var(--pg-disabled)" }}>
+                Sin sesiones registradas aún.
+              </div>
+            )}
           </div>
+
+          {/* Progress summary */}
+          {dias.length > 0 && (
+            <div style={{ background: "var(--pg-card)", border: "1px solid var(--pg-border)", borderRadius: 8, padding: "11px 12px" }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--pg-text)", marginBottom: 8 }}>Progreso</div>
+              <div style={{ display: "flex", gap: 3, marginBottom: 7 }}>
+                {dias.map((_, i) => (
+                  <div key={i} style={{ flex: 1, height: 4, background: completedDays.includes(i) ? "var(--pg-accent)" : "var(--pg-surface)", borderRadius: 2 }} />
+                ))}
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 10, color: "var(--pg-muted)" }}>{completedDays.length} de {dias.length} días</span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: "var(--pg-accent)", fontVariantNumeric: "tabular-nums" }}>
+                  {dias.length > 0 ? Math.round((completedDays.length / dias.length) * 100) : 0}%
+                </span>
+              </div>
+            </div>
+          )}
+
+          <Link
+            href="/routines"
+            style={{ fontSize: 10, color: "var(--pg-muted)", textDecoration: "none", textAlign: "center" }}
+          >
+            ← Volver a rutinas
+          </Link>
         </div>
       </div>
     </>

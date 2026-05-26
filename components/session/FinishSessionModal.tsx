@@ -41,9 +41,8 @@ export default function FinishSessionModal({
         <Pressable
           style={{
             flex: 1,
-            backgroundColor: "rgba(0,0,0,0.85)",
-            justifyContent: "center",
-            padding: 32,
+            backgroundColor: "rgba(0,0,0,0.75)",
+            justifyContent: "flex-end",
           }}
           onPress={onClose}
         >
@@ -51,71 +50,119 @@ export default function FinishSessionModal({
             <View
               style={{
                 backgroundColor: colors.card,
-                borderRadius: 20,
-                padding: 28,
-                borderWidth: 1,
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+                paddingHorizontal: 24,
+                paddingTop: 12,
+                paddingBottom: 36,
+                borderTopWidth: 1,
                 borderColor: colors.border,
               }}
             >
-              <Text style={{ color: colors.text, fontSize: 18, fontWeight: "700", marginBottom: 4 }}>
+              {/* Handle */}
+              <View
+                style={{
+                  width: 36,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: colors.border,
+                  alignSelf: "center",
+                  marginBottom: 24,
+                }}
+              />
+
+              <Text style={{ color: colors.text, fontSize: 20, fontWeight: "700", marginBottom: 20 }}>
                 Finalizar sesión
               </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: 20 }}>
-                {completedSets} serie{completedSets !== 1 ? "s" : ""} completada
-                {completedSets !== 1 ? "s" : ""} · {formatTime(elapsed)}
-              </Text>
 
+              {/* Stats row */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  backgroundColor: colors.surface,
+                  borderRadius: 14,
+                  marginBottom: 20,
+                  overflow: "hidden",
+                }}
+              >
+                <View style={{ flex: 1, alignItems: "center", paddingVertical: 16 }}>
+                  <Text style={{ color: colors.accent, fontSize: 26, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
+                    {completedSets}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11, letterSpacing: 0.8, marginTop: 3 }}>
+                    SERIES
+                  </Text>
+                </View>
+                <View style={{ width: 1, backgroundColor: colors.border, marginVertical: 12 }} />
+                <View style={{ flex: 1, alignItems: "center", paddingVertical: 16 }}>
+                  <Text style={{ color: colors.accent, fontSize: 26, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
+                    {formatTime(elapsed)}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11, letterSpacing: 0.8, marginTop: 3 }}>
+                    TIEMPO
+                  </Text>
+                </View>
+              </View>
+
+              {/* Notes */}
+              <Text style={{ color: colors.textMuted, fontSize: 12, letterSpacing: 0.6, marginBottom: 8 }}>
+                NOTAS
+              </Text>
               <TextInput
                 value={sessionNotes}
                 onChangeText={setSessionNotes}
-                placeholder="Notas opcionales (cómo te fue, qué mejorar...)"
-                placeholderTextColor="#444"
+                placeholder="¿Cómo te fue? ¿Qué mejorar?"
+                placeholderTextColor={colors.textDisabled}
                 multiline
                 numberOfLines={3}
                 style={{
                   backgroundColor: colors.surface,
-                  borderRadius: 10,
-                  padding: 12,
+                  borderRadius: 12,
+                  padding: 14,
                   color: colors.text,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  marginBottom: 20,
+                  marginBottom: 24,
                   minHeight: 80,
                   textAlignVertical: "top",
                   fontSize: 14,
+                  lineHeight: 20,
                 }}
               />
 
+              {/* Actions */}
               <TouchableOpacity
                 onPress={onFinish}
                 disabled={saving}
                 style={{
-                  backgroundColor: "#EF4444",
-                  borderRadius: 12,
-                  padding: 14,
+                  backgroundColor: colors.accent,
+                  borderRadius: 14,
+                  padding: 16,
                   alignItems: "center",
                   marginBottom: 10,
                   opacity: saving ? 0.7 : 1,
                 }}
               >
                 {saving ? (
-                  <ActivityIndicator color="white" size="small" />
+                  <ActivityIndicator color={colors.accentText} size="small" />
                 ) : (
-                  <Text style={{ color: colors.text, fontWeight: "700", fontSize: 15 }}>Terminar</Text>
+                  <Text style={{ color: colors.accentText, fontWeight: "700", fontSize: 16 }}>
+                    Guardar y terminar
+                  </Text>
                 )}
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={onClose}
                 style={{
-                  borderRadius: 12,
-                  padding: 14,
+                  borderRadius: 14,
+                  padding: 16,
                   alignItems: "center",
-                  borderWidth: 1,
-                  borderColor: colors.border,
                 }}
               >
-                <Text style={{ color: colors.textMuted, fontWeight: "600", fontSize: 15 }}>Cancelar</Text>
+                <Text style={{ color: colors.textMuted, fontWeight: "600", fontSize: 15 }}>
+                  Seguir entrenando
+                </Text>
               </TouchableOpacity>
             </View>
           </Pressable>

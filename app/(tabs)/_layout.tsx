@@ -38,6 +38,15 @@ export default function TabLayout() {
             ),
           }}
         />
+        <Tabs.Screen
+          name="club"
+          options={{
+            title: "Club",
+            tabBarIcon: ({ color }) => (
+              <IconSymbol size={26} name="person.3.fill" color={color} />
+            ),
+          }}
+        />
         <Tabs.Screen name="history" options={{ href: null }} />
         <Tabs.Screen name="progress" options={{ href: null }} />
         <Tabs.Screen name="social" options={{ href: null }} />

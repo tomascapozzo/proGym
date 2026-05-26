@@ -141,73 +141,76 @@ export default function DayPreviewModal({
               ))}
 
               {/* Circuits */}
-              {(previewDay.circuitos ?? []).map((circ: RoutineCircuit, ci) => (
-                <View
-                  key={`circ-${ci}`}
-                  style={{
-                    borderRadius: 12,
-                    marginBottom: 8,
-                    borderWidth: 1,
-                    borderColor: "#7C3AED44",
-                    overflow: "hidden",
-                  }}
-                >
+              {(previewDay.circuitos ?? []).map((circ: RoutineCircuit, ci) => {
+                const circColor = colors.circuitPalette[ci % colors.circuitPalette.length];
+                return (
                   <View
+                    key={`circ-${ci}`}
                     style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                      paddingHorizontal: 14,
-                      paddingVertical: 10,
-                      backgroundColor: "#2E106522",
+                      borderRadius: 12,
+                      marginBottom: 8,
+                      borderWidth: 1,
+                      borderColor: circColor.text + "44",
+                      overflow: "hidden",
                     }}
                   >
-                    <Text style={{ color: "#C4B5FD", fontSize: 10, fontWeight: "800", letterSpacing: 1 }}>
-                      CIRCUITO
-                    </Text>
-                    {circ.nombre ? (
-                      <Text style={{ color: "#C4B5FD", fontSize: 13, fontWeight: "600", flex: 1 }}>
-                        {circ.nombre}
-                      </Text>
-                    ) : <View style={{ flex: 1 }} />}
-                    <Text style={{ color: "#C4B5FD", fontSize: 11 }}>
-                      {circ.rondas} rondas · {circ.descanso}
-                    </Text>
-                  </View>
-                  {circ.ejercicios.map((cEx, ei) => (
                     <View
-                      key={ei}
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
-                        paddingVertical: 12,
+                        gap: 8,
                         paddingHorizontal: 14,
-                        backgroundColor: colors.card,
-                        borderTopWidth: 1,
-                        borderTopColor: colors.border,
+                        paddingVertical: 10,
+                        backgroundColor: circColor.bg,
                       }}
                     >
+                      <Text style={{ color: circColor.text, fontSize: 10, fontWeight: "800", letterSpacing: 1 }}>
+                        CIRCUITO
+                      </Text>
+                      {circ.nombre ? (
+                        <Text style={{ color: circColor.text, fontSize: 13, fontWeight: "600", flex: 1 }}>
+                          {circ.nombre}
+                        </Text>
+                      ) : <View style={{ flex: 1 }} />}
+                      <Text style={{ color: circColor.text, fontSize: 11 }}>
+                        {circ.rondas} rondas · {circ.descanso}
+                      </Text>
+                    </View>
+                    {circ.ejercicios.map((cEx, ei) => (
                       <View
+                        key={ei}
                         style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: 11,
-                          backgroundColor: "#2E1065",
+                          flexDirection: "row",
                           alignItems: "center",
-                          justifyContent: "center",
-                          marginRight: 12,
+                          paddingVertical: 12,
+                          paddingHorizontal: 14,
+                          backgroundColor: colors.card,
+                          borderTopWidth: 1,
+                          borderTopColor: colors.border,
                         }}
                       >
-                        <Text style={{ color: "#C4B5FD", fontSize: 10, fontWeight: "700" }}>
-                          {ei + 1}
-                        </Text>
+                        <View
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: 11,
+                            backgroundColor: circColor.bg,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            marginRight: 12,
+                          }}
+                        >
+                          <Text style={{ color: circColor.text, fontSize: 10, fontWeight: "700" }}>
+                            {ei + 1}
+                          </Text>
+                        </View>
+                        <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>{cEx.nombre}</Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 12 }}>{Array.isArray(cEx.reps) ? cEx.reps.join("/") : cEx.reps} reps</Text>
                       </View>
-                      <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>{cEx.nombre}</Text>
-                      <Text style={{ color: colors.textMuted, fontSize: 12 }}>{Array.isArray(cEx.reps) ? cEx.reps.join("/") : cEx.reps} reps</Text>
-                    </View>
-                  ))}
-                </View>
-              ))}
+                    ))}
+                  </View>
+                );
+              })}
             </ScrollView>
 
             {/* Start button */}

@@ -1,15 +1,15 @@
 import DayPreviewModal from "@/components/train/DayPreviewModal";
 import RoutineCreatorModal from "@/components/train/RoutineCreatorModal";
 import RoutineDetailSheet from "@/components/train/RoutineDetailSheet";
+import CustomModal from "@/components/ui/custom/customModal";
 import { useAuth } from "@/context/auth-context";
 import { useTheme } from "@/context/theme-context";
 import { useRoutineCreator } from "@/hooks/useRoutineCreator";
 import { supabase } from "@/lib/supabase";
-import { ROUTINE_TYPE_LABELS, type Routine, type RoutineDay } from "@/types/routine";
+import { getNextDay, ROUTINE_TYPE_LABELS, type Routine, type RoutineDay } from "@/types/routine";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
-  Alert,
   ActivityIndicator,
   Pressable,
   ScrollView,
@@ -17,25 +17,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getNextDay(routine: Routine): { day: RoutineDay; index: number; isSkippedFallback: boolean } | null {
-  const completed = routine.progress?.completed_days ?? [];
-  const skipped = routine.progress?.skipped_days ?? [];
-
-  // First: first non-completed, non-skipped day
-  for (let i = 0; i < routine.data.dias.length; i++) {
-    if (!completed.includes(i) && !skipped.includes(i))
-      return { day: routine.data.dias[i], index: i, isSkippedFallback: false };
-  }
-  // Fallback: all remaining days are skipped — show first skipped so routine isn't stuck
-  for (let i = 0; i < routine.data.dias.length; i++) {
-    if (!completed.includes(i))
-      return { day: routine.data.dias[i], index: i, isSkippedFallback: true };
-  }
-  return null;
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -49,6 +30,7 @@ export default function TrainScreen() {
 
   // Full routine detail sheet
   const [detailRoutine, setDetailRoutine] = useState<Routine | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Routine | null>(null);
 
   // Session start flow
   const [previewDay, setPreviewDay] = useState<RoutineDay | null>(null);
@@ -127,23 +109,14 @@ export default function TrainScreen() {
     fetchRoutines();
   };
 
-  const deleteRoutine = (routine: Routine) => {
-    Alert.alert(
-      "Eliminar rutina",
-      `¿Seguro que querés eliminar "${routine.data.nombre}"? Esta acción no se puede deshacer.`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            await supabase.from("routines").delete().eq("id", routine.id);
-            if (detailRoutine?.id === routine.id) setDetailRoutine(null);
-            fetchRoutines();
-          },
-        },
-      ],
-    );
+  const deleteRoutine = (routine: Routine) => setDeleteTarget(routine);
+
+  const confirmDeleteRoutine = async () => {
+    if (!deleteTarget) return;
+    await supabase.from("routines").delete().eq("id", deleteTarget.id);
+    if (detailRoutine?.id === deleteTarget.id) setDetailRoutine(null);
+    setDeleteTarget(null);
+    fetchRoutines();
   };
 
   const skipDay = async (routine: Routine, dayIndex: number) => {
@@ -541,6 +514,17 @@ export default function TrainScreen() {
       />
 
       <RoutineCreatorModal {...routineCreator} />
+
+      <CustomModal
+        visible={!!deleteTarget}
+        title="Eliminar rutina"
+        message={`¿Seguro que querés eliminar "${deleteTarget?.data.nombre}"? Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar"
+        confirmColor={colors.error}
+        confirmTextColor="white"
+        onConfirm={confirmDeleteRoutine}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </View>
   );
 }

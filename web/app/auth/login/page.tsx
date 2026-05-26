@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -17,17 +17,25 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    try {
+      const supabase = createClient();
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (authError) {
-      setError("Email o contraseña incorrectos.");
+      console.log("[login] signIn result:", { user: data?.user?.id, session: !!data?.session, error: authError?.message });
+
+      if (authError) {
+        setError(authError.message);
+        setLoading(false);
+        return;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err) {
+      console.error("[login] unexpected error:", err);
+      setError("Error inesperado. Revisá la consola.");
       setLoading(false);
-      return;
     }
-
-    router.push("/dashboard");
-    router.refresh();
   }
 
   const inputStyle: React.CSSProperties = {
@@ -44,7 +52,7 @@ export default function LoginPage() {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--pg-bg)", padding: "2rem" }}>
       {/* background glow */}
-      <div style={{ position: "fixed", top: "20%", left: "50%", transform: "translateX(-50%)", width: 600, height: 400, background: "radial-gradient(ellipse, rgba(110,231,183,0.07) 0%, transparent 70%)", pointerEvents: "none" }} />
+      <div style={{ position: "fixed", top: "20%", left: "50%", transform: "translateX(-50%)", width: 600, height: 400, background: "radial-gradient(ellipse, rgba(212,168,83,0.07) 0%, transparent 70%)", pointerEvents: "none" }} />
 
       <div style={{ width: "100%", maxWidth: 380, position: "relative" }}>
         {/* Logo */}
@@ -93,7 +101,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              style={{ marginTop: 4, background: loading ? "var(--pg-accent-bg)" : "var(--pg-accent)", color: loading ? "var(--pg-accent)" : "var(--pg-accent-text)", border: loading ? "1px solid rgba(110,231,183,0.3)" : "none", borderRadius: 10, padding: "0.875rem", fontWeight: 800, fontSize: "0.9rem", cursor: loading ? "default" : "pointer", transition: "all 0.2s" }}
+              style={{ marginTop: 4, background: loading ? "var(--pg-accent-bg)" : "var(--pg-accent)", color: loading ? "var(--pg-accent)" : "var(--pg-accent-text)", border: loading ? "1px solid rgba(212,168,83,0.3)" : "none", borderRadius: 10, padding: "0.875rem", fontWeight: 800, fontSize: "0.9rem", cursor: loading ? "default" : "pointer", transition: "all 0.2s" }}
             >
               {loading ? "Ingresando..." : "Ingresar"}
             </button>

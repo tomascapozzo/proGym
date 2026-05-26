@@ -60,6 +60,7 @@ type SessionContextType = {
   removeSet: (exIdx: number, setIdx: number) => void;
   removeExercise: (exIdx: number) => void;
   updateSet: (exIdx: number, setIdx: number, field: keyof Omit<SetEntry, "done">, value: string) => void;
+  fillDown: (exIdx: number, setIdx: number, field: "reps" | "weight") => void;
   toggleDone: (exIdx: number, setIdx: number) => void;
   toggleExerciseMode: (exIdx: number) => void;
   setTrackingMode: React.Dispatch<React.SetStateAction<"simple" | "detailed">>;
@@ -299,13 +300,28 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const updated = [...prev];
         const sets = [...updated[exIdx].sets];
         sets[setIdx] = { ...sets[setIdx], [field]: value };
-        if (value !== "" && (field === "reps" || field === "weight")) {
-          for (let i = setIdx + 1; i < sets.length; i++) {
-            if (sets[i][field] === "") {
-              sets[i] = { ...sets[i], [field]: value };
-            }
+        updated[exIdx] = { ...updated[exIdx], sets };
+        return updated;
+      });
+    },
+    [],
+  );
+
+  const fillDown = useCallback(
+    (exIdx: number, setIdx: number, field: "reps" | "weight") => {
+      setSessionExercises((prev) => {
+        const value = prev[exIdx].sets[setIdx][field];
+        if (!value) return prev;
+        const updated = [...prev];
+        const sets = [...updated[exIdx].sets];
+        let changed = false;
+        for (let i = setIdx + 1; i < sets.length; i++) {
+          if (sets[i][field] === "") {
+            sets[i] = { ...sets[i], [field]: value };
+            changed = true;
           }
         }
+        if (!changed) return prev;
         updated[exIdx] = { ...updated[exIdx], sets };
         return updated;
       });
@@ -422,6 +438,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         removeSet,
         removeExercise,
         updateSet,
+        fillDown,
         toggleDone,
         toggleExerciseMode,
         setTrackingMode,
