@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import type { ClubMember } from "@/types/club";
 import { Session, User } from "@supabase/supabase-js";
 import React, {
     createContext,
@@ -23,6 +24,7 @@ type Profile = {
   peso?: string;
   altura?: string;
   lesiones?: string;
+  position?: string;
   pr_exercises?: string[];
   one_rm?: Record<string, number>;
 };
@@ -31,6 +33,7 @@ type AuthContextType = {
   session: Session | null;
   user: User | null;
   profile: Profile | null;
+  clubMembership: ClubMember | null;
   loading: boolean;
   signIn: (
     email: string,
@@ -44,32 +47,36 @@ type AuthContextType = {
   ) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  refreshClubMembership: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
   profile: null,
+  clubMembership: null,
   loading: true,
   signIn: async () => ({ error: null }),
   signUp: async () => ({ error: null }),
   signOut: async () => {},
   refreshProfile: async () => {},
+  refreshClubMembership: async () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [clubMembership, setClubMembership] = useState<ClubMember | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single();
-    setProfile(data ?? null);
+    const [{ data: profileData }, { data: memberData }] = await Promise.all([
+      supabase.from("profiles").select("*").eq("id", userId).single(),
+      supabase.from("club_members").select("*").eq("user_id", userId).maybeSingle(),
+    ]);
+    setProfile(profileData ?? null);
+    setClubMembership(memberData ?? null);
   };
 
   useEffect(() => {
@@ -96,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           fetchProfile(session.user.id);
         } else {
           setProfile(null);
+          setClubMembership(null);
         }
       },
     );
@@ -141,17 +149,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) await fetchProfile(user.id);
   };
 
+  const refreshClubMembership = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("club_members")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    setClubMembership(data ?? null);
+  };
+
   return (
     <AuthContext.Provider
       value={{
         session,
         user,
         profile,
+        clubMembership,
         loading,
         signIn,
         signUp,
         signOut,
         refreshProfile,
+        refreshClubMembership,
       }}
     >
       {children}

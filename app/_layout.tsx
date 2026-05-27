@@ -18,7 +18,7 @@ export const unstable_settings = {
 
 function RootNavigator() {
   const { isDark } = useTheme();
-  const { session, profile, loading } = useAuth();
+  const { session, profile, clubMembership, loading } = useAuth();
 
   useEffect(() => {
     if (loading) return;
@@ -27,10 +27,12 @@ function RootNavigator() {
       router.replace("/(auth)/login");
     } else if (!profile || !profile.onboarding_completed) {
       router.replace("/onboarding");
+    } else if (!clubMembership) {
+      router.replace("/join-club");
     } else {
       router.replace("/(tabs)");
     }
-  }, [session, profile, loading]);
+  }, [session, profile, clubMembership, loading]);
 
   return (
     <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
@@ -38,6 +40,7 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="join-club" options={{ headerShown: false }} />
         <Stack.Screen name="session" options={{ headerShown: false }} />
         <Stack.Screen name="history" options={{ headerShown: false }} />
         <Stack.Screen name="progress" options={{ headerShown: false }} />

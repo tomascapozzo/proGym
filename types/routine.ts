@@ -46,6 +46,7 @@ export type Routine = {
   progress: RoutineProgress;
   data: { nombre: string; dias: RoutineDay[] };
   created_at: string;
+  source_share_id?: string | null;
 };
 
 export function getNextDay(

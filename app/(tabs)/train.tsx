@@ -5,6 +5,7 @@ import CustomModal from "@/components/ui/custom/customModal";
 import { useAuth } from "@/context/auth-context";
 import { useTheme } from "@/context/theme-context";
 import { useRoutineCreator } from "@/hooks/useRoutineCreator";
+import { useSharedRoutines, type AvailableShare } from "@/hooks/useSharedRoutines";
 import { supabase } from "@/lib/supabase";
 import { getNextDay, ROUTINE_TYPE_LABELS, type Routine, type RoutineDay } from "@/types/routine";
 import { router, useFocusEffect } from "expo-router";
@@ -27,6 +28,8 @@ export default function TrainScreen() {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loadingRoutines, setLoadingRoutines] = useState(true);
   const [showPast, setShowPast] = useState(false);
+  const [showClubPast, setShowClubPast] = useState(false);
+  const [acceptingShareId, setAcceptingShareId] = useState<string | null>(null);
 
   // Full routine detail sheet
   const [detailRoutine, setDetailRoutine] = useState<Routine | null>(null);
@@ -39,9 +42,14 @@ export default function TrainScreen() {
   const [dayPreviewVisible, setDayPreviewVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
 
+  const sharedRoutines = useSharedRoutines(user?.id);
+
   useFocusEffect(
     useCallback(() => {
-      if (user) fetchRoutines();
+      if (user) {
+        fetchRoutines();
+        sharedRoutines.refresh();
+      }
     }, [user]),
   );
 
@@ -60,13 +68,19 @@ export default function TrainScreen() {
 
   // ─── Group routines ───────────────────────────────────────────────────────
 
-  const activeRoutines = routines.filter((r) => r.status === "active");
-  const pendingRoutines = routines.filter((r) => r.status === "pending_restart");
-  const pastRoutines = routines.filter((r) => r.status === "past");
+  const personalRoutines = routines.filter((r) => !r.source_share_id);
+  const clubCopies = routines.filter((r) => !!r.source_share_id);
+
+  const activeRoutines = personalRoutines.filter((r) => r.status === "active");
+  const pendingRoutines = personalRoutines.filter((r) => r.status === "pending_restart");
+  const pastRoutines = personalRoutines.filter((r) => r.status === "past");
+
+  const activeClubRoutines = clubCopies.filter((r) => r.status === "active");
+  const pendingClubRoutines = clubCopies.filter((r) => r.status === "pending_restart");
+  const pastClubRoutines = clubCopies.filter((r) => r.status === "past");
 
   // ─── Session start actions ────────────────────────────────────────────────
 
-  // Called from the ▶ button — skips day preview, goes straight to confirm
   const startDay = (routine: Routine, day: RoutineDay, dayIndex: number) => {
     setPreviewRoutine(routine);
     setPreviewDay(day);
@@ -91,6 +105,24 @@ export default function TrainScreen() {
         totalDays: String(previewRoutine.data.dias.length),
       },
     });
+  };
+
+  const handleStartSharedRoutine = async (share: AvailableShare) => {
+    try {
+      setAcceptingShareId(share.id);
+      const newRoutine = await sharedRoutines.acceptShare(
+        share.id,
+        share.routine.data,
+        share.routine.type,
+      );
+      await fetchRoutines();
+      const firstDay = (newRoutine as Routine).data.dias[0];
+      if (firstDay) startDay(newRoutine as Routine, firstDay, 0);
+    } catch {
+      // acceptShare failed — nothing to do, user can retry
+    } finally {
+      setAcceptingShareId(null);
+    }
   };
 
   const restartRoutine = async (routine: Routine) => {
@@ -138,7 +170,7 @@ export default function TrainScreen() {
 
   // ─── Render helpers ───────────────────────────────────────────────────────
 
-  const renderActiveRoutine = (routine: Routine) => {
+  const renderActiveRoutine = (routine: Routine, isClub = false) => {
     const next = getNextDay(routine);
     if (!next) return null;
     const completed = routine.progress?.completed_days ?? [];
@@ -159,7 +191,6 @@ export default function TrainScreen() {
           borderColor: colors.border,
         }}
       >
-        {/* Routine header */}
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12, gap: 8 }}>
           <View
             style={{
@@ -181,7 +212,6 @@ export default function TrainScreen() {
           </Text>
         </View>
 
-        {/* Next day row */}
         <Pressable
           onPress={(e) => { e.stopPropagation?.(); startDay(routine, next.day, next.index); }}
           style={({ pressed }) => ({
@@ -206,7 +236,9 @@ export default function TrainScreen() {
               {[
                 next.day.enfoque,
                 next.day.ejercicios.length > 0 ? `${next.day.ejercicios.length} ejercicios` : null,
-                (next.day.circuitos ?? []).length > 0 ? `${(next.day.circuitos ?? []).length} circuito${(next.day.circuitos ?? []).length !== 1 ? "s" : ""}` : null,
+                (next.day.circuitos ?? []).length > 0
+                  ? `${(next.day.circuitos ?? []).length} circuito${(next.day.circuitos ?? []).length !== 1 ? "s" : ""}`
+                  : null,
               ].filter(Boolean).join(" · ")}
             </Text>
           </View>
@@ -224,7 +256,6 @@ export default function TrainScreen() {
           </View>
         </Pressable>
 
-        {/* Bottom row: skip (non-daily) or delete (daily) */}
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 8 }}>
           {routine.type !== "daily" && !next.isSkippedFallback && (
             <TouchableOpacity
@@ -235,12 +266,14 @@ export default function TrainScreen() {
             </TouchableOpacity>
           )}
           <View style={{ flex: 1 }} />
-          <TouchableOpacity
-            onPress={() => deleteRoutine(routine)}
-            style={{ padding: 4 }}
-          >
-            <Text style={{ color: colors.error, fontSize: 12 }}>Eliminar rutina</Text>
-          </TouchableOpacity>
+          {!isClub && (
+            <TouchableOpacity
+              onPress={() => deleteRoutine(routine)}
+              style={{ padding: 4 }}
+            >
+              <Text style={{ color: colors.error, fontSize: 12 }}>Eliminar rutina</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -321,7 +354,82 @@ export default function TrainScreen() {
     </View>
   );
 
+  const renderAvailableShare = (share: AvailableShare) => {
+    const typeColor = colors.routineColors[share.routine.type];
+    const isLoading = acceptingShareId === share.id;
+
+    return (
+      <View
+        key={share.id}
+        style={{
+          backgroundColor: colors.card,
+          borderRadius: 16,
+          padding: 16,
+          marginBottom: 12,
+          borderWidth: 1,
+          borderColor: colors.border,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <View
+            style={{
+              backgroundColor: typeColor + "22",
+              borderRadius: 6,
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              alignSelf: "flex-start",
+              marginBottom: 6,
+            }}
+          >
+            <Text style={{ color: typeColor, fontSize: 10, fontWeight: "700", letterSpacing: 1 }}>
+              {ROUTINE_TYPE_LABELS[share.routine.type]}
+            </Text>
+          </View>
+          <Text style={{ color: colors.text, fontWeight: "700", fontSize: 15 }}>
+            {share.routine.data.nombre}
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+            {share.routine.data.dias.length} día{share.routine.data.dias.length !== 1 ? "s" : ""}
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={() => handleStartSharedRoutine(share)}
+          disabled={isLoading}
+          activeOpacity={0.8}
+          style={{
+            backgroundColor: colors.accent,
+            borderRadius: 10,
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            alignItems: "center",
+            justifyContent: "center",
+            minWidth: 80,
+            opacity: isLoading ? 0.6 : 1,
+          }}
+        >
+          {isLoading ? (
+            <ActivityIndicator color={colors.accentText ?? "white"} size="small" />
+          ) : (
+            <Text style={{ color: colors.accentText ?? "white", fontSize: 13, fontWeight: "700" }}>
+              Comenzar
+            </Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   // ─── Render ───────────────────────────────────────────────────────────────
+
+  const hasClubRoutines =
+    sharedRoutines.availableShares.length > 0 ||
+    activeClubRoutines.length > 0 ||
+    pendingClubRoutines.length > 0 ||
+    pastClubRoutines.length > 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -342,7 +450,104 @@ export default function TrainScreen() {
           ¿Cómo vas a entrenar hoy?
         </Text>
 
-        {/* ── ACTIVE ROUTINES ── */}
+        {/* ── CLUB ROUTINES ── */}
+        <Text
+          style={{
+            color: colors.textMuted,
+            fontSize: 12,
+            letterSpacing: 1,
+            marginBottom: 10,
+          }}
+        >
+          RUTINAS DEL CLUB
+        </Text>
+
+        {sharedRoutines.loading && loadingRoutines ? (
+          <ActivityIndicator
+            color={colors.accent}
+            style={{ marginBottom: 24, alignSelf: "flex-start" }}
+          />
+        ) : !hasClubRoutines ? (
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 16,
+              padding: 20,
+              marginBottom: 28,
+              borderWidth: 1,
+              borderColor: colors.border,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: colors.textMuted, textAlign: "center", lineHeight: 22 }}>
+              Tu coach no ha asignado rutinas todavía.
+            </Text>
+          </View>
+        ) : (
+          <View style={{ marginBottom: 8 }}>
+            {sharedRoutines.availableShares.map(renderAvailableShare)}
+            {activeClubRoutines.map((r) => renderActiveRoutine(r, true))}
+            {pendingClubRoutines.map(renderPendingRoutine)}
+
+            {pastClubRoutines.length > 0 && (
+              <>
+                <TouchableOpacity
+                  onPress={() => setShowClubPast((v) => !v)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 10,
+                    marginTop: 4,
+                  }}
+                >
+                  <Text style={{ color: colors.textMuted, fontSize: 12, letterSpacing: 1 }}>
+                    COMPLETADAS ({pastClubRoutines.length})
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                    {showClubPast ? "▲" : "▼"}
+                  </Text>
+                </TouchableOpacity>
+                {showClubPast && (
+                  <View style={{ marginBottom: 8 }}>
+                    {pastClubRoutines.map((r) => (
+                      <View
+                        key={r.id}
+                        style={{
+                          backgroundColor: colors.card,
+                          borderRadius: 12,
+                          padding: 14,
+                          marginBottom: 8,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 10,
+                        }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.textMuted, fontWeight: "600", fontSize: 14 }}>
+                            {r.data.nombre}
+                          </Text>
+                          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2, opacity: 0.6 }}>
+                            {r.data.dias.length} días · {ROUTINE_TYPE_LABELS[r.type]}
+                          </Text>
+                        </View>
+                        <TouchableOpacity onPress={() => restartRoutine(r)}>
+                          <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "600" }}>
+                            Reiniciar
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+        )}
+
+        {/* ── PERSONAL ACTIVE ROUTINES ── */}
         <Text
           style={{
             color: colors.textMuted,
@@ -377,12 +582,12 @@ export default function TrainScreen() {
           </View>
         ) : (
           <View style={{ marginBottom: 8 }}>
-            {activeRoutines.map(renderActiveRoutine)}
+            {activeRoutines.map((r) => renderActiveRoutine(r, false))}
             {pendingRoutines.map(renderPendingRoutine)}
           </View>
         )}
 
-        {/* ── PAST ROUTINES ── */}
+        {/* ── PAST PERSONAL ROUTINES ── */}
         {pastRoutines.length > 0 && (
           <>
             <TouchableOpacity
@@ -494,8 +699,6 @@ export default function TrainScreen() {
         onStartDay={(day, idx) => {
           const routine = detailRoutine!;
           setDetailRoutine(null);
-          // Delay confirm dialog until the sheet finishes its dismiss animation
-          // to avoid iOS failing to present a Modal while another is mid-dismiss.
           setTimeout(() => startDay(routine, day, idx), 350);
         }}
         onSkipDay={(idx) => { if (detailRoutine) skipDay(detailRoutine, idx); }}
