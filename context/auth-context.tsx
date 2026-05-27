@@ -96,11 +96,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
-          fetchProfile(session.user.id);
+          // INITIAL_SESSION is handled by getSession() above — skip to avoid double fetch
+          if (event !== "INITIAL_SESSION") {
+            setLoading(true);
+            fetchProfile(session.user.id).finally(() => setLoading(false));
+          }
         } else {
           setProfile(null);
           setClubMembership(null);

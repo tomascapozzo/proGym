@@ -2,6 +2,7 @@ import DayPreviewModal from "@/components/train/DayPreviewModal";
 import RoutineCreatorModal from "@/components/train/RoutineCreatorModal";
 import RoutineDetailSheet from "@/components/train/RoutineDetailSheet";
 import CustomModal from "@/components/ui/custom/customModal";
+import ExercisePicker from "@/components/ui/custom/ExercisePicker";
 import { useAuth } from "@/context/auth-context";
 import { useTheme } from "@/context/theme-context";
 import { useRoutineCreator } from "@/hooks/useRoutineCreator";
@@ -717,6 +718,27 @@ export default function TrainScreen() {
       />
 
       <RoutineCreatorModal {...routineCreator} />
+
+      <ExercisePicker
+        visible={routineCreator.exPickerVisible}
+        onClose={() => routineCreator.setExPickerVisible(false)}
+        onSelect={routineCreator.pickExercise}
+        onSelectMultiple={routineCreator.pickExercises}
+        multiSelect
+        library={routineCreator.library}
+        loading={routineCreator.loadingLibrary}
+        title="Elegir ejercicios"
+      />
+      <ExercisePicker
+        visible={routineCreator.circuitExPickerVisible}
+        onClose={() => routineCreator.setCircuitExPickerVisible(false)}
+        onSelect={routineCreator.pickCircuitExercise}
+        onSelectMultiple={routineCreator.pickCircuitExercises}
+        multiSelect
+        library={routineCreator.library}
+        loading={routineCreator.loadingLibrary}
+        title="Elegir ejercicios para circuito"
+      />
 
       <CustomModal
         visible={!!deleteTarget}

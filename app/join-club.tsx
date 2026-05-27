@@ -25,7 +25,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 
 export default function JoinClubScreen() {
   const { colors } = useTheme();
-  const { refreshClubMembership } = useAuth();
+  const { refreshClubMembership, signOut } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [code, setCode] = useState("");
@@ -296,6 +296,14 @@ export default function JoinClubScreen() {
             </View>
           </>
         )}
+        <TouchableOpacity
+          onPress={signOut}
+          style={{ alignItems: "center", marginTop: 32 }}
+        >
+          <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+            Cerrar sesión
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );

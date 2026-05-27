@@ -1,5 +1,4 @@
 import DayCard from "@/components/train/DayCard";
-import ExercisePicker from "@/components/ui/custom/ExercisePicker";
 import { useTheme } from "@/context/theme-context";
 import type { useRoutineCreator } from "@/hooks/useRoutineCreator";
 import React from "react";
@@ -35,12 +34,6 @@ export default function RoutineCreatorModal({
   editingDayIdx,
   setEditingDayIdx,
   savingRoutine,
-  exPickerVisible,
-  setExPickerVisible,
-  circuitExPickerVisible,
-  setCircuitExPickerVisible,
-  library,
-  loadingLibrary,
   addDay,
   updateDay,
   removeDay,
@@ -50,7 +43,6 @@ export default function RoutineCreatorModal({
   updateExercisePeso,
   removeExercise,
   openExPickerForDay,
-  pickExercise,
   addCircuit,
   updateCircuit,
   removeCircuit,
@@ -59,9 +51,6 @@ export default function RoutineCreatorModal({
   removeCircuitEx,
   moveCircuitEx,
   openCircuitExPicker,
-  pickCircuitExercise,
-  pickCircuitExercises,
-  pickExercises,
   saveRoutine,
 }: Props) {
   const { colors } = useTheme();
@@ -285,27 +274,6 @@ export default function RoutineCreatorModal({
             </View>
           )}
 
-          <ExercisePicker
-            visible={exPickerVisible}
-            onClose={() => setExPickerVisible(false)}
-            onSelect={pickExercise}
-            onSelectMultiple={pickExercises}
-            multiSelect
-            library={library}
-            loading={loadingLibrary}
-            title="Elegir ejercicios"
-          />
-
-          <ExercisePicker
-            visible={circuitExPickerVisible}
-            onClose={() => setCircuitExPickerVisible(false)}
-            onSelect={pickCircuitExercise}
-            onSelectMultiple={pickCircuitExercises}
-            multiSelect
-            library={library}
-            loading={loadingLibrary}
-            title="Elegir ejercicios para circuito"
-          />
         </View>
       </Modal>
   );

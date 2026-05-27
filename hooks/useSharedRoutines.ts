@@ -39,7 +39,7 @@ export function useSharedRoutines(userId: string | undefined) {
       );
 
       const available = ((sharesResult.data ?? []) as AvailableShare[]).filter(
-        (s) => !copiedShareIds.has(s.id),
+        (s) => s.routine !== null && !copiedShareIds.has(s.id),
       );
 
       setAvailableShares(available);

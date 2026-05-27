@@ -1,5 +1,6 @@
 import InviteCodeCard from "@/components/club/InviteCodeCard";
 import JoinClubModal from "@/components/club/JoinClubModal";
+import ShareRoutineModal from "@/components/club/ShareRoutineModal";
 import { useAuth } from "@/context/auth-context";
 import { useTheme } from "@/context/theme-context";
 import { useClub } from "@/hooks/useClub";
@@ -110,6 +111,7 @@ export default function ClubScreen() {
   } = useClub(user?.id);
 
   const [joinVisible, setJoinVisible] = useState(false);
+  const [shareVisible, setShareVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async () => {
@@ -293,7 +295,52 @@ export default function ClubScreen() {
 
               {/* Groups */}
               <View>
-                <SectionHeader title="Grupos" count={groups.length} colors={colors} />
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 12,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ color: colors.text, fontSize: 16, fontWeight: "700" }}>
+                      Grupos
+                    </Text>
+                    <View
+                      style={{
+                        backgroundColor: colors.surface,
+                        borderRadius: 10,
+                        paddingHorizontal: 7,
+                        paddingVertical: 2,
+                      }}
+                    >
+                      <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: "600" }}>
+                        {groups.length}
+                      </Text>
+                    </View>
+                  </View>
+                  {groups.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => setShareVisible(true)}
+                      activeOpacity={0.7}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 5,
+                        backgroundColor: colors.accent + "18",
+                        borderRadius: 8,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                      }}
+                    >
+                      <Ionicons name="share-outline" size={14} color={colors.accent} />
+                      <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "700" }}>
+                        Compartir rutina
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
                 {groups.length === 0 ? (
                   <Text style={{ color: colors.textMuted, fontSize: 13 }}>
                     Todavia no hay grupos. Crea uno desde el wizard o la configuracion del club.
@@ -447,6 +494,16 @@ export default function ClubScreen() {
           )}
         </View>
       </ScrollView>
+
+      {isStaff && club && user && (
+        <ShareRoutineModal
+          visible={shareVisible}
+          onClose={() => setShareVisible(false)}
+          userId={user.id}
+          clubId={club.id}
+          groups={groups}
+        />
+      )}
     </View>
   );
 }
