@@ -4,7 +4,11 @@
       "mcp__claude_ai_Supabase__list_projects",
       "mcp__claude_ai_Supabase__apply_migration",
       "mcp__claude_ai_Supabase__list_tables",
-      "Bash(dir \"c:\\\\Users\\\\tomya\\\\Desktop\\\\Personal\\\\proGym\")"
+      "Bash(dir \"c:\\\\Users\\\\tomya\\\\Desktop\\\\Personal\\\\proGym\")",
+      "mcp__claude_ai_Supabase__execute_sql"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
 }

@@ -1,4 +1,4 @@
-export type SetEntry = { reps: string; weight: string; rpe: string; done: boolean };
+export type SetEntry = { reps: string; weight: string; rpe: string; done: boolean; plannedReps?: string; plannedWeight?: string };
 
 export type SessionExercise = {
   exercise_id?: string;
@@ -9,6 +9,7 @@ export type SessionExercise = {
   trackingMode?: "simple" | "detailed";
   circuitId?: string;
   circuitName?: string;
+  archived?: boolean;
 };
 
 export function formatTime(seconds: number): string {

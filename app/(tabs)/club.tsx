@@ -4,8 +4,12 @@ import ShareRoutineModal from "@/components/club/ShareRoutineModal";
 import { useAuth } from "@/context/auth-context";
 import { useTheme } from "@/context/theme-context";
 import { useClub } from "@/hooks/useClub";
+import { useSharedRoutines } from "@/hooks/useSharedRoutines";
+import { supabase } from "@/lib/supabase";
+import { getNextDay, type Routine } from "@/types/routine";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -113,6 +117,38 @@ export default function ClubScreen() {
   const [joinVisible, setJoinVisible] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  type SharedEnrollment = {
+    id: string;
+    status: string;
+    progress: { completed_days: number[]; skipped_days?: number[] };
+    enrolled_at: string;
+    routine: { id: string; data: { nombre: string; dias: any[] }; type: string } | null;
+  };
+  const [sharedRoutines, setSharedRoutines] = useState<SharedEnrollment[]>([]);
+  const [loadingShared, setLoadingShared] = useState(false);
+  const { syncSharedRoutines } = useSharedRoutines();
+
+  const fetchSharedRoutines = async () => {
+    if (!user) return;
+    setLoadingShared(true);
+    await syncSharedRoutines();
+    const { data } = await supabase
+      .from("routine_enrollments")
+      .select("id, status, progress, enrolled_at, routine:routines!routine_id(id, data, type)")
+      .eq("user_id", user.id)
+      .not("source_share_id", "is", null)
+      .order("enrolled_at", { ascending: false });
+    setSharedRoutines((data ?? []) as unknown as SharedEnrollment[]);
+    setLoadingShared(false);
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user || !membership || isStaff) return;
+      fetchSharedRoutines();
+    }, [user, membership, isStaff]),
+  );
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -470,25 +506,129 @@ export default function ClubScreen() {
                 )}
               </View>
 
-              {/* Routines — coming soon */}
+              {/* Club routines */}
               <View>
-                <SectionHeader title="Rutinas del club" colors={colors} />
-                <View
-                  style={{
-                    backgroundColor: colors.card,
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    padding: 16,
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <Ionicons name="barbell-outline" size={24} color={colors.textDisabled} />
-                  <Text style={{ color: colors.textMuted, fontSize: 13, textAlign: "center" }}>
-                    Tu coach no ha compartido rutinas todavia.
-                  </Text>
-                </View>
+                <SectionHeader title="Rutinas del club" count={sharedRoutines.length || undefined} colors={colors} />
+                {loadingShared ? (
+                  <ActivityIndicator color={colors.accent} style={{ alignSelf: "flex-start" }} />
+                ) : sharedRoutines.length === 0 ? (
+                  <View
+                    style={{
+                      backgroundColor: colors.card,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      padding: 16,
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Ionicons name="barbell-outline" size={24} color={colors.textDisabled} />
+                    <Text style={{ color: colors.textMuted, fontSize: 13, textAlign: "center" }}>
+                      Tu coach no ha compartido rutinas todavia.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 10 }}>
+                    {sharedRoutines.map((enrollment) => {
+                      if (!enrollment.routine) return null;
+                      const routine: Routine = {
+                        id: enrollment.routine.id,
+                        enrollment_id: enrollment.id,
+                        type: enrollment.routine.type as Routine["type"],
+                        status: enrollment.status as Routine["status"],
+                        progress: enrollment.progress,
+                        data: enrollment.routine.data as Routine["data"],
+                        created_at: enrollment.enrolled_at,
+                      };
+                      const nextDay = getNextDay(routine);
+                      const typeColor = colors.routineColors[routine.type];
+                      const totalDays = routine.data.dias?.length ?? 1;
+                      const completedCount = enrollment.progress?.completed_days?.length ?? 0;
+
+                      const handleStart = () => {
+                        if (!nextDay) return;
+                        router.push({
+                          pathname: "/session",
+                          params: {
+                            type: "routine",
+                            dayData: JSON.stringify(nextDay.day),
+                            dayIndex: String(nextDay.index),
+                            routineId: routine.id,
+                            enrollmentId: enrollment.id,
+                            routineType: routine.type,
+                            completedDays: JSON.stringify(enrollment.progress?.completed_days ?? []),
+                            totalDays: String(totalDays),
+                          },
+                        });
+                      };
+
+                      return (
+                        <View
+                          key={enrollment.id}
+                          style={{
+                            backgroundColor: colors.card,
+                            borderRadius: 14,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            padding: 16,
+                            gap: 10,
+                          }}
+                        >
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: colors.text, fontWeight: "700", fontSize: 15 }} numberOfLines={1}>
+                                {routine.data.nombre}
+                              </Text>
+                              {totalDays > 1 && (
+                                <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                                  {completedCount} de {totalDays} dias completados
+                                </Text>
+                              )}
+                            </View>
+                            <View
+                              style={{
+                                paddingHorizontal: 8,
+                                paddingVertical: 3,
+                                borderRadius: 6,
+                                backgroundColor: typeColor + "20",
+                              }}
+                            >
+                              <Text style={{ color: typeColor, fontSize: 11, fontWeight: "700" }}>
+                                {routine.type === "daily" ? "Diaria" : routine.type === "weekly" ? "Semanal" : "Mensual"}
+                              </Text>
+                            </View>
+                          </View>
+
+                          {enrollment.status === "active" && nextDay ? (
+                            <TouchableOpacity
+                              onPress={handleStart}
+                              activeOpacity={0.85}
+                              style={{
+                                backgroundColor: colors.accent,
+                                borderRadius: 10,
+                                paddingVertical: 10,
+                                alignItems: "center",
+                              }}
+                            >
+                              <Text style={{ color: colors.accentText, fontWeight: "700", fontSize: 14 }}>
+                                {completedCount > 0 ? "Continuar" : "Comenzar"}
+                              </Text>
+                            </TouchableOpacity>
+                          ) : enrollment.status === "pending_restart" ? (
+                            <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                              Semana completada — esperando reinicio
+                            </Text>
+                          ) : (
+                            <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                              Completada
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
             </>
           )}

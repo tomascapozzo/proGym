@@ -88,7 +88,6 @@ export default function ShareRoutineModal({ visible, onClose, userId, clubId, gr
   return (
     <Modal
       visible={visible}
-      transparent
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={handleClose}

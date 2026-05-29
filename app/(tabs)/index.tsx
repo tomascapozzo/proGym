@@ -1,6 +1,7 @@
 import { useAuth } from "@/context/auth-context";
 import { useTheme } from "@/context/theme-context";
 import { useClub } from "@/hooks/useClub";
+import { useSharedRoutines } from "@/hooks/useSharedRoutines";
 import { supabase } from "@/lib/supabase";
 import { getNextDay, type Routine, type RoutineDay } from "@/types/routine";
 import { Ionicons } from "@expo/vector-icons";
@@ -32,6 +33,7 @@ export default function HomeScreen() {
   const { user, profile } = useAuth();
   const { colors } = useTheme();
   const { membership: clubMembership } = useClub(user?.id);
+  const { syncSharedRoutines } = useSharedRoutines();
   const [routine, setRoutine] = useState<Routine | null>(null);
   const [loadingRoutine, setLoadingRoutine] = useState(true);
 
@@ -45,15 +47,58 @@ export default function HomeScreen() {
 
   const fetchData = async () => {
     setLoadingRoutine(true);
-    const { data } = await supabase
-      .from("routines")
-      .select("*")
+    await syncSharedRoutines();
+
+    // Prefer personal active routines; fall back to club-shared if none exist
+    let { data } = await supabase
+      .from("routine_enrollments")
+      .select("id, status, progress, source_share_id, enrolled_at, routine:routines!routine_id(id, data, type, created_at)")
       .eq("user_id", user!.id)
       .eq("status", "active")
-      .order("created_at", { ascending: false })
+      .is("source_share_id", null)
+      .order("enrolled_at", { ascending: false })
       .limit(1)
-      .single();
-    setRoutine(data ?? null);
+      .maybeSingle();
+
+    if (!data) {
+      ({ data } = await supabase
+        .from("routine_enrollments")
+        .select("id, status, progress, source_share_id, enrolled_at, routine:routines!routine_id(id, data, type, created_at)")
+        .eq("user_id", user!.id)
+        .eq("status", "active")
+        .not("source_share_id", "is", null)
+        .order("enrolled_at", { ascending: false })
+        .limit(1)
+        .maybeSingle());
+    }
+
+    if (data) {
+      type EnrollmentRow = {
+        id: string;
+        status: string;
+        progress: { completed_days: number[]; skipped_days?: number[] };
+        source_share_id: string | null;
+        enrolled_at: string;
+        routine: { id: string; data: { nombre: string; dias: any[] }; type: string; created_at: string } | null;
+      };
+      const e = data as unknown as EnrollmentRow;
+      if (e.routine) {
+        setRoutine({
+          id: e.routine.id,
+          enrollment_id: e.id,
+          type: e.routine.type as Routine["type"],
+          status: e.status as Routine["status"],
+          progress: e.progress,
+          data: e.routine.data as Routine["data"],
+          created_at: e.routine.created_at,
+          source_share_id: e.source_share_id,
+        });
+      } else {
+        setRoutine(null);
+      }
+    } else {
+      setRoutine(null);
+    }
     setLoadingRoutine(false);
   };
 
@@ -71,6 +116,7 @@ export default function HomeScreen() {
         dayData: JSON.stringify(nextDay.day),
         dayIndex: String(nextDay.index),
         routineId: routine.id,
+        enrollmentId: routine.enrollment_id,
         routineType: routine.type,
         completedDays: JSON.stringify(routine.progress?.completed_days ?? []),
         totalDays: String(routine.data.dias.length),
@@ -534,60 +580,6 @@ export default function HomeScreen() {
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
-        </View>
-
-        {/* ── AI COACH (PRÓXIMAMENTE) ── */}
-        <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
-          <View
-            style={{
-              borderRadius: 20,
-              padding: 20,
-              borderWidth: 1.5,
-              borderColor: colors.accent + "55",
-              backgroundColor: colors.card,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 14,
-            }}
-          >
-            <View
-              style={{
-                width: 50,
-                height: 50,
-                borderRadius: 14,
-                backgroundColor: colors.accent + "15",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="hardware-chip-outline" size={26} color={colors.accent} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontWeight: "800", fontSize: 18 }}>
-                AI Coach
-              </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
-                Tu entrenador inteligente
-              </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>
-                Planifica. Ajusta. Evoluciona.
-              </Text>
-            </View>
-            <View
-              style={{
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: colors.accent + "40",
-                backgroundColor: colors.accent + "15",
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-              }}
-            >
-              <Text style={{ color: colors.accent, fontWeight: "700", fontSize: 12 }}>
-                Próximamente
-              </Text>
-            </View>
-          </View>
         </View>
 
       </ScrollView>

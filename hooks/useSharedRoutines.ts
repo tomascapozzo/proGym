@@ -1,82 +1,90 @@
+import { useAuth } from "@/context/auth-context";
 import { supabase } from "@/lib/supabase";
-import type { RoutineType } from "@/types/routine";
-import { useCallback, useEffect, useState } from "react";
 
-export interface AvailableShare {
-  id: string;
-  shared_by: string;
-  routine: {
-    id: string;
-    data: { nombre: string; dias: any[] };
-    type: RoutineType;
-  };
-}
+export function useSharedRoutines() {
+  const { user } = useAuth();
 
-export function useSharedRoutines(userId: string | undefined) {
-  const [availableShares, setAvailableShares] = useState<AvailableShare[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Syncs routine_enrollments with the current routine_shares targeting this player:
+  //  - Creates enrollments for shares that don't have one yet.
+  //  - Backfills source_share_id on enrollments created without it (web dashboard bug).
+  //  - Archives (status → "past") any club enrollment whose share no longer exists,
+  //    so a replaced routine doesn't stay active alongside the new one.
+  const syncSharedRoutines = async (): Promise<void> => {
+    if (!user) return;
 
-  const refresh = useCallback(async () => {
-    if (!userId) {
-      setLoading(false);
-      return;
+    const { data: groupRows } = await supabase
+      .from("club_group_members")
+      .select("group_id")
+      .eq("user_id", user.id);
+    const groupIds = (groupRows ?? []).map((g: { group_id: string }) => g.group_id);
+
+    const { data: directShares } = await supabase
+      .from("routine_shares")
+      .select("id, routine_id")
+      .eq("target_type", "player")
+      .eq("target_user_id", user.id);
+
+    let groupShares: { id: string; routine_id: string }[] = [];
+    if (groupIds.length > 0) {
+      const { data } = await supabase
+        .from("routine_shares")
+        .select("id, routine_id")
+        .eq("target_type", "group")
+        .in("target_group_id", groupIds);
+      groupShares = (data ?? []) as { id: string; routine_id: string }[];
     }
-    setLoading(true);
-    try {
-      const [sharesResult, copiesResult] = await Promise.all([
-        supabase
-          .from("routine_shares")
-          .select("id, shared_by, routine:routines!routine_id(id, data, type)"),
-        supabase
-          .from("routines")
-          .select("source_share_id")
-          .eq("user_id", userId)
-          .not("source_share_id", "is", null),
-      ]);
 
-      const copiedShareIds = new Set(
-        (copiesResult.data ?? []).map((r) => r.source_share_id as string),
+    const allShares = [
+      ...((directShares ?? []) as { id: string; routine_id: string }[]),
+      ...groupShares,
+    ];
+    const validShareIds = new Set(allShares.map((s) => s.id));
+
+    if (allShares.length > 0) {
+      // Upsert without ignoreDuplicates so that on conflict we update source_share_id.
+      // Only source_share_id is in the SET clause (status and progress are omitted,
+      // so they are untouched on existing rows and use column defaults on new inserts).
+      await supabase.from("routine_enrollments").upsert(
+        allShares.map((share) => ({
+          routine_id: share.routine_id,
+          user_id: user.id,
+          source_share_id: share.id,
+        })),
+        { onConflict: "routine_id,user_id" },
       );
-
-      const available = ((sharesResult.data ?? []) as AvailableShare[]).filter(
-        (s) => s.routine !== null && !copiedShareIds.has(s.id),
-      );
-
-      setAvailableShares(available);
-    } finally {
-      setLoading(false);
     }
-  }, [userId]);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+    // Archive active club enrollments whose share was deleted or replaced
+    const { data: activeClubEnrollments } = await supabase
+      .from("routine_enrollments")
+      .select("id, source_share_id")
+      .eq("user_id", user.id)
+      .not("source_share_id", "is", null)
+      .eq("status", "active");
 
-  const acceptShare = async (
-    shareId: string,
-    routineData: { nombre: string; dias: any[] },
-    routineType: RoutineType,
-  ) => {
-    const { data, error } = await supabase
-      .from("routines")
-      .insert({
-        user_id: userId,
-        data: routineData,
-        type: routineType,
-        status: "active",
-        progress: { completed_days: [] },
-        source_share_id: shareId,
-      })
-      .select()
-      .single();
+    const staleIds = (
+      (activeClubEnrollments ?? []) as { id: string; source_share_id: string }[]
+    )
+      .filter((e) => !validShareIds.has(e.source_share_id))
+      .map((e) => e.id);
 
-    if (error) throw error;
+    if (staleIds.length > 0) {
+      await supabase
+        .from("routine_enrollments")
+        .update({ status: "past" })
+        .in("id", staleIds);
+    }
 
-    // Remove the share from availableShares immediately
-    setAvailableShares((prev) => prev.filter((s) => s.id !== shareId));
-
-    return data;
+    // Reactivate any enrollment whose share still exists but status fell to past/pending_restart
+    if (validShareIds.size > 0) {
+      await supabase
+        .from("routine_enrollments")
+        .update({ status: "active" })
+        .eq("user_id", user.id)
+        .in("source_share_id", [...validShareIds])
+        .neq("status", "active");
+    }
   };
 
-  return { availableShares, loading, refresh, acceptShare };
+  return { syncSharedRoutines };
 }

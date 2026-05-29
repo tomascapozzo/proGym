@@ -59,6 +59,7 @@ type SessionContextType = {
   addSet: (exIdx: number) => void;
   removeSet: (exIdx: number, setIdx: number) => void;
   removeExercise: (exIdx: number) => void;
+  replaceExercise: (exIdx: number, newId: string | undefined, newName: string) => void;
   updateSet: (exIdx: number, setIdx: number, field: keyof Omit<SetEntry, "done">, value: string) => void;
   fillDown: (exIdx: number, setIdx: number, field: "reps" | "weight") => void;
   toggleDone: (exIdx: number, setIdx: number) => void;
@@ -271,9 +272,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const updated = [...prev];
       const currentSets = updated[exIdx].sets;
       const lastSet = currentSets[currentSets.length - 1];
-      const newSet: SetEntry = lastSet
-        ? { reps: lastSet.reps, weight: lastSet.weight, rpe: "", done: false }
-        : { reps: "", weight: "", rpe: "", done: false };
+      const pReps = lastSet ? (lastSet.reps || lastSet.plannedReps) : undefined;
+      const pWeight = lastSet ? (lastSet.weight || lastSet.plannedWeight) : undefined;
+      const newSet: SetEntry = {
+        reps: "",
+        weight: "",
+        ...(pReps ? { plannedReps: pReps } : {}),
+        ...(pWeight ? { plannedWeight: pWeight } : {}),
+        rpe: "",
+        done: false,
+      };
       updated[exIdx] = { ...updated[exIdx], sets: [...currentSets, newSet] };
       return updated;
     });
@@ -292,6 +300,31 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const removeExercise = useCallback((exIdx: number) => {
     setSessionExercises((prev) => prev.filter((_, i) => i !== exIdx));
+  }, []);
+
+  const replaceExercise = useCallback((exIdx: number, newId: string | undefined, newName: string) => {
+    setSessionExercises((prev) => {
+      const updated = [...prev];
+      const old = updated[exIdx];
+      const doneSets = old.sets.filter((s) => s.done);
+      const undoneSets = old.sets.filter((s) => !s.done);
+      const freshSets = (old.circuitId && undoneSets.length > 0 ? undoneSets : [null]).map(
+        () => ({ reps: "", weight: "", rpe: "", done: false } as SetEntry),
+      );
+      const newEx: SessionExercise = {
+        exercise_id: newId,
+        exercise_name: newName,
+        sets: freshSets,
+        ...(old.circuitId ? { circuitId: old.circuitId, circuitName: old.circuitName, restSeconds: old.restSeconds } : {}),
+      };
+      if (doneSets.length > 0) {
+        updated[exIdx] = { ...old, sets: doneSets, archived: true };
+        updated.splice(exIdx + 1, 0, newEx);
+      } else {
+        updated[exIdx] = newEx;
+      }
+      return updated;
+    });
   }, []);
 
   const updateSet = useCallback(
@@ -335,7 +368,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const wasAlreadyDone = prev[exIdx].sets[setIdx].done;
         const updated = [...prev];
         const sets = [...updated[exIdx].sets];
-        sets[setIdx] = { ...sets[setIdx], done: !sets[setIdx].done };
+
+        let { reps, weight, plannedReps, plannedWeight } = sets[setIdx];
+        if (!wasAlreadyDone) {
+          const lastDone = [...sets.slice(0, setIdx)].reverse().find((s) => s.done);
+          if (!reps) reps = lastDone?.reps || plannedReps || "";
+          if (!weight) weight = lastDone?.weight || plannedWeight || "";
+        }
+
+        sets[setIdx] = { ...sets[setIdx], reps, weight, done: !sets[setIdx].done };
         updated[exIdx] = { ...updated[exIdx], sets };
 
         if (!wasAlreadyDone) {
@@ -437,6 +478,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         addSet,
         removeSet,
         removeExercise,
+        replaceExercise,
         updateSet,
         fillDown,
         toggleDone,

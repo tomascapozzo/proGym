@@ -6,7 +6,7 @@ import ExercisePicker from "@/components/ui/custom/ExercisePicker";
 import { useAuth } from "@/context/auth-context";
 import { useTheme } from "@/context/theme-context";
 import { useRoutineCreator } from "@/hooks/useRoutineCreator";
-import { useSharedRoutines, type AvailableShare } from "@/hooks/useSharedRoutines";
+import { useSharedRoutines } from "@/hooks/useSharedRoutines";
 import { supabase } from "@/lib/supabase";
 import { getNextDay, ROUTINE_TYPE_LABELS, type Routine, type RoutineDay } from "@/types/routine";
 import { router, useFocusEffect } from "expo-router";
@@ -29,8 +29,6 @@ export default function TrainScreen() {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loadingRoutines, setLoadingRoutines] = useState(true);
   const [showPast, setShowPast] = useState(false);
-  const [showClubPast, setShowClubPast] = useState(false);
-  const [acceptingShareId, setAcceptingShareId] = useState<string | null>(null);
 
   // Full routine detail sheet
   const [detailRoutine, setDetailRoutine] = useState<Routine | null>(null);
@@ -43,28 +41,48 @@ export default function TrainScreen() {
   const [dayPreviewVisible, setDayPreviewVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
 
-  const sharedRoutines = useSharedRoutines(user?.id);
-
   useFocusEffect(
     useCallback(() => {
-      if (user) {
-        fetchRoutines();
-        sharedRoutines.refresh();
-      }
+      if (user) fetchRoutines();
     }, [user]),
   );
 
   const fetchRoutines = async () => {
     setLoadingRoutines(true);
+    await syncSharedRoutines();
     const { data } = await supabase
-      .from("routines")
-      .select("*")
+      .from("routine_enrollments")
+      .select("id, status, progress, source_share_id, enrolled_at, routine:routines!routine_id(id, data, type, created_at)")
       .eq("user_id", user!.id)
-      .order("created_at", { ascending: false });
-    setRoutines((data as Routine[]) ?? []);
+      .order("enrolled_at", { ascending: false });
+
+    type EnrollmentRow = {
+      id: string;
+      status: string;
+      progress: { completed_days: number[]; skipped_days?: number[] };
+      source_share_id: string | null;
+      enrolled_at: string;
+      routine: { id: string; data: { nombre: string; dias: any[] }; type: string; created_at: string } | null;
+    };
+
+    const mapped: Routine[] = ((data ?? []) as unknown as EnrollmentRow[])
+      .filter((e) => e.routine !== null)
+      .map((e) => ({
+        id: e.routine!.id,
+        enrollment_id: e.id,
+        type: e.routine!.type as Routine["type"],
+        status: e.status as Routine["status"],
+        progress: e.progress,
+        data: e.routine!.data as Routine["data"],
+        created_at: e.routine!.created_at,
+        source_share_id: e.source_share_id,
+      }));
+
+    setRoutines(mapped);
     setLoadingRoutines(false);
   };
 
+  const { syncSharedRoutines } = useSharedRoutines();
   const routineCreator = useRoutineCreator(fetchRoutines);
 
   // ─── Group routines ───────────────────────────────────────────────────────
@@ -78,7 +96,12 @@ export default function TrainScreen() {
 
   const activeClubRoutines = clubCopies.filter((r) => r.status === "active");
   const pendingClubRoutines = clubCopies.filter((r) => r.status === "pending_restart");
-  const pastClubRoutines = clubCopies.filter((r) => r.status === "past");
+
+  // Show club routines in the active section only when no personal routines exist
+  const noPersonalActive = activeRoutines.length === 0 && pendingRoutines.length === 0;
+  const showingClubFallback = noPersonalActive && (activeClubRoutines.length > 0 || pendingClubRoutines.length > 0);
+  const displayActiveRoutines = showingClubFallback ? activeClubRoutines : activeRoutines;
+  const displayPendingRoutines = showingClubFallback ? pendingClubRoutines : pendingRoutines;
 
   // ─── Session start actions ────────────────────────────────────────────────
 
@@ -101,6 +124,7 @@ export default function TrainScreen() {
         dayData: JSON.stringify(previewDay),
         dayIndex: String(previewDayIndex),
         routineId: previewRoutine.id,
+        enrollmentId: previewRoutine.enrollment_id,
         routineType: previewRoutine.type,
         completedDays: JSON.stringify(previewRoutine.progress?.completed_days ?? []),
         totalDays: String(previewRoutine.data.dias.length),
@@ -108,37 +132,19 @@ export default function TrainScreen() {
     });
   };
 
-  const handleStartSharedRoutine = async (share: AvailableShare) => {
-    try {
-      setAcceptingShareId(share.id);
-      const newRoutine = await sharedRoutines.acceptShare(
-        share.id,
-        share.routine.data,
-        share.routine.type,
-      );
-      await fetchRoutines();
-      const firstDay = (newRoutine as Routine).data.dias[0];
-      if (firstDay) startDay(newRoutine as Routine, firstDay, 0);
-    } catch {
-      // acceptShare failed — nothing to do, user can retry
-    } finally {
-      setAcceptingShareId(null);
-    }
-  };
-
   const restartRoutine = async (routine: Routine) => {
     await supabase
-      .from("routines")
+      .from("routine_enrollments")
       .update({ status: "active", progress: { completed_days: [] } })
-      .eq("id", routine.id);
+      .eq("id", routine.enrollment_id);
     fetchRoutines();
   };
 
   const archiveRoutine = async (routine: Routine) => {
     await supabase
-      .from("routines")
+      .from("routine_enrollments")
       .update({ status: "past" })
-      .eq("id", routine.id);
+      .eq("id", routine.enrollment_id);
     fetchRoutines();
   };
 
@@ -146,7 +152,13 @@ export default function TrainScreen() {
 
   const confirmDeleteRoutine = async () => {
     if (!deleteTarget) return;
-    await supabase.from("routines").delete().eq("id", deleteTarget.id);
+    if (deleteTarget.source_share_id) {
+      // Club-assigned: remove enrollment only (coach's routine stays intact)
+      await supabase.from("routine_enrollments").delete().eq("id", deleteTarget.enrollment_id);
+    } else {
+      // Personal: delete the routine (enrollment cascades via ON DELETE CASCADE)
+      await supabase.from("routines").delete().eq("id", deleteTarget.id);
+    }
     if (detailRoutine?.id === deleteTarget.id) setDetailRoutine(null);
     setDeleteTarget(null);
     fetchRoutines();
@@ -156,7 +168,7 @@ export default function TrainScreen() {
     const skipped = routine.progress?.skipped_days ?? [];
     if (skipped.includes(dayIndex)) return;
     const newProgress = { ...routine.progress, skipped_days: [...skipped, dayIndex] };
-    await supabase.from("routines").update({ progress: newProgress }).eq("id", routine.id);
+    await supabase.from("routine_enrollments").update({ progress: newProgress }).eq("id", routine.enrollment_id);
     if (detailRoutine?.id === routine.id) setDetailRoutine({ ...routine, progress: newProgress });
     fetchRoutines();
   };
@@ -164,7 +176,7 @@ export default function TrainScreen() {
   const unskipDay = async (routine: Routine, dayIndex: number) => {
     const skipped = routine.progress?.skipped_days ?? [];
     const newProgress = { ...routine.progress, skipped_days: skipped.filter((i) => i !== dayIndex) };
-    await supabase.from("routines").update({ progress: newProgress }).eq("id", routine.id);
+    await supabase.from("routine_enrollments").update({ progress: newProgress }).eq("id", routine.enrollment_id);
     if (detailRoutine?.id === routine.id) setDetailRoutine({ ...routine, progress: newProgress });
     fetchRoutines();
   };
@@ -355,82 +367,7 @@ export default function TrainScreen() {
     </View>
   );
 
-  const renderAvailableShare = (share: AvailableShare) => {
-    const typeColor = colors.routineColors[share.routine.type];
-    const isLoading = acceptingShareId === share.id;
-
-    return (
-      <View
-        key={share.id}
-        style={{
-          backgroundColor: colors.card,
-          borderRadius: 16,
-          padding: 16,
-          marginBottom: 12,
-          borderWidth: 1,
-          borderColor: colors.border,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 12,
-        }}
-      >
-        <View style={{ flex: 1 }}>
-          <View
-            style={{
-              backgroundColor: typeColor + "22",
-              borderRadius: 6,
-              paddingHorizontal: 8,
-              paddingVertical: 3,
-              alignSelf: "flex-start",
-              marginBottom: 6,
-            }}
-          >
-            <Text style={{ color: typeColor, fontSize: 10, fontWeight: "700", letterSpacing: 1 }}>
-              {ROUTINE_TYPE_LABELS[share.routine.type]}
-            </Text>
-          </View>
-          <Text style={{ color: colors.text, fontWeight: "700", fontSize: 15 }}>
-            {share.routine.data.nombre}
-          </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
-            {share.routine.data.dias.length} día{share.routine.data.dias.length !== 1 ? "s" : ""}
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          onPress={() => handleStartSharedRoutine(share)}
-          disabled={isLoading}
-          activeOpacity={0.8}
-          style={{
-            backgroundColor: colors.accent,
-            borderRadius: 10,
-            paddingHorizontal: 16,
-            paddingVertical: 10,
-            alignItems: "center",
-            justifyContent: "center",
-            minWidth: 80,
-            opacity: isLoading ? 0.6 : 1,
-          }}
-        >
-          {isLoading ? (
-            <ActivityIndicator color={colors.accentText ?? "white"} size="small" />
-          ) : (
-            <Text style={{ color: colors.accentText ?? "white", fontSize: 13, fontWeight: "700" }}>
-              Comenzar
-            </Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    );
-  };
-
   // ─── Render ───────────────────────────────────────────────────────────────
-
-  const hasClubRoutines =
-    sharedRoutines.availableShares.length > 0 ||
-    activeClubRoutines.length > 0 ||
-    pendingClubRoutines.length > 0 ||
-    pastClubRoutines.length > 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -451,104 +388,7 @@ export default function TrainScreen() {
           ¿Cómo vas a entrenar hoy?
         </Text>
 
-        {/* ── CLUB ROUTINES ── */}
-        <Text
-          style={{
-            color: colors.textMuted,
-            fontSize: 12,
-            letterSpacing: 1,
-            marginBottom: 10,
-          }}
-        >
-          RUTINAS DEL CLUB
-        </Text>
-
-        {sharedRoutines.loading && loadingRoutines ? (
-          <ActivityIndicator
-            color={colors.accent}
-            style={{ marginBottom: 24, alignSelf: "flex-start" }}
-          />
-        ) : !hasClubRoutines ? (
-          <View
-            style={{
-              backgroundColor: colors.card,
-              borderRadius: 16,
-              padding: 20,
-              marginBottom: 28,
-              borderWidth: 1,
-              borderColor: colors.border,
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ color: colors.textMuted, textAlign: "center", lineHeight: 22 }}>
-              Tu coach no ha asignado rutinas todavía.
-            </Text>
-          </View>
-        ) : (
-          <View style={{ marginBottom: 8 }}>
-            {sharedRoutines.availableShares.map(renderAvailableShare)}
-            {activeClubRoutines.map((r) => renderActiveRoutine(r, true))}
-            {pendingClubRoutines.map(renderPendingRoutine)}
-
-            {pastClubRoutines.length > 0 && (
-              <>
-                <TouchableOpacity
-                  onPress={() => setShowClubPast((v) => !v)}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: 10,
-                    marginTop: 4,
-                  }}
-                >
-                  <Text style={{ color: colors.textMuted, fontSize: 12, letterSpacing: 1 }}>
-                    COMPLETADAS ({pastClubRoutines.length})
-                  </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                    {showClubPast ? "▲" : "▼"}
-                  </Text>
-                </TouchableOpacity>
-                {showClubPast && (
-                  <View style={{ marginBottom: 8 }}>
-                    {pastClubRoutines.map((r) => (
-                      <View
-                        key={r.id}
-                        style={{
-                          backgroundColor: colors.card,
-                          borderRadius: 12,
-                          padding: 14,
-                          marginBottom: 8,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 10,
-                        }}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.textMuted, fontWeight: "600", fontSize: 14 }}>
-                            {r.data.nombre}
-                          </Text>
-                          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2, opacity: 0.6 }}>
-                            {r.data.dias.length} días · {ROUTINE_TYPE_LABELS[r.type]}
-                          </Text>
-                        </View>
-                        <TouchableOpacity onPress={() => restartRoutine(r)}>
-                          <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "600" }}>
-                            Reiniciar
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </>
-            )}
-          </View>
-        )}
-
-        {/* ── PERSONAL ACTIVE ROUTINES ── */}
+        {/* ── ACTIVE ROUTINES (personal, or club fallback) ── */}
         <Text
           style={{
             color: colors.textMuted,
@@ -565,7 +405,7 @@ export default function TrainScreen() {
             color={colors.accent}
             style={{ marginBottom: 24, alignSelf: "flex-start" }}
           />
-        ) : activeRoutines.length === 0 && pendingRoutines.length === 0 ? (
+        ) : displayActiveRoutines.length === 0 && displayPendingRoutines.length === 0 ? (
           <View
             style={{
               backgroundColor: colors.card,
@@ -583,8 +423,8 @@ export default function TrainScreen() {
           </View>
         ) : (
           <View style={{ marginBottom: 8 }}>
-            {activeRoutines.map((r) => renderActiveRoutine(r, false))}
-            {pendingRoutines.map(renderPendingRoutine)}
+            {displayActiveRoutines.map((r) => renderActiveRoutine(r, showingClubFallback))}
+            {displayPendingRoutines.map(renderPendingRoutine)}
           </View>
         )}
 

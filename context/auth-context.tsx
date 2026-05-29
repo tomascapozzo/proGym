@@ -24,6 +24,8 @@ type Profile = {
   peso?: string;
   altura?: string;
   lesiones?: string;
+  lesiones_previas?: { lesion: string; anio: string }[];
+  gimnasio?: string;
   position?: string;
   pr_exercises?: string[];
   one_rm?: Record<string, number>;

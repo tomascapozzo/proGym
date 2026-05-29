@@ -383,13 +383,27 @@ export function useRoutineCreator(onSaved: () => void) {
     );
     if (!hasContent) return;
     setSavingRoutine(true);
-    await supabase.from("routines").insert({
-      user_id: user.id,
-      type: newRoutineType,
-      status: "active",
-      progress: { completed_days: [] },
-      data: { nombre: newRoutineName.trim(), dias: newDays },
-    });
+    const { data: newRoutine } = await supabase
+      .from("routines")
+      .insert({
+        user_id: user.id,
+        type: newRoutineType,
+        status: "active",
+        progress: { completed_days: [] },
+        data: { nombre: newRoutineName.trim(), dias: newDays },
+      })
+      .select("id")
+      .single();
+
+    if (newRoutine) {
+      await supabase.from("routine_enrollments").insert({
+        routine_id: newRoutine.id,
+        user_id: user.id,
+        status: "active",
+        progress: { completed_days: [] },
+      });
+    }
+
     setSavingRoutine(false);
     setCreateVisible(false);
     onSaved();

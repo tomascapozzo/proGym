@@ -13,6 +13,7 @@ type Props = {
   onAddSet: (exIdx: number) => void;
   onRemoveSet: (exIdx: number, setIdx: number) => void;
   onRemoveExercise: (exIdx: number) => void;
+  onReplaceExercise: (exIdx: number) => void;
   onToggleMode: (exIdx: number) => void;
 };
 
@@ -294,6 +295,9 @@ function DetailedSets({
           );
         }
 
+        const prevDone = sets.slice(0, setIdx).reverse().find((s) => s.done);
+        const repsPlaceholder = prevDone?.reps || prevDone?.plannedReps || set.plannedReps || "0";
+        const weightPlaceholder = prevDone?.weight || prevDone?.plannedWeight || set.plannedWeight || "0";
         return (
           <View key={setIdx} style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
             {set.done ? (
@@ -311,7 +315,7 @@ function DetailedSets({
               value={set.reps}
               onChangeText={(v) => onUpdate(setIdx, "reps", v)}
               onBlur={() => onFillDown(setIdx, "reps")}
-              placeholder="0"
+              placeholder={repsPlaceholder}
               placeholderTextColor={colors.textDisabled}
               keyboardType="numeric"
               style={{
@@ -329,7 +333,7 @@ function DetailedSets({
               value={set.weight}
               onChangeText={(v) => onUpdate(setIdx, "weight", v)}
               onBlur={() => onFillDown(setIdx, "weight")}
-              placeholder="0"
+              placeholder={weightPlaceholder}
               placeholderTextColor={colors.textDisabled}
               keyboardType="numeric"
               style={{
@@ -411,6 +415,7 @@ export default function ExerciseCard({
   onAddSet,
   onRemoveSet,
   onRemoveExercise,
+  onReplaceExercise,
   onToggleMode,
 }: Props) {
   const mode = ex.trackingMode ?? globalMode;
@@ -492,6 +497,22 @@ export default function ExerciseCard({
             >
               {ex.trackingMode === "simple" ? "Vista" : ex.trackingMode === "detailed" ? "Detalle" : "···"}
             </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => onReplaceExercise(exIdx)}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: colors.surface,
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Text style={{ color: colors.textMuted, fontSize: 14 }}>↔</Text>
           </TouchableOpacity>
 
           <TouchableOpacity

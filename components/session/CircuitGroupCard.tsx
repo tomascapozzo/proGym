@@ -14,6 +14,7 @@ type Props = {
   onToggleDone: (exIdx: number, roundIdx: number) => void;
   onAddRound: () => void;
   onRemoveRound: (roundIdx: number) => void;
+  onReplaceExercise: (exIdx: number) => void;
 };
 
 export default function CircuitGroupCard({
@@ -28,6 +29,7 @@ export default function CircuitGroupCard({
   onToggleDone,
   onAddRound,
   onRemoveRound,
+  onReplaceExercise,
 }: Props) {
   const rondas = exercises[0]?.sets.length ?? 0;
   const circuitColor = colors.circuitPalette[circuitIndex % colors.circuitPalette.length];
@@ -184,6 +186,12 @@ export default function CircuitGroupCard({
               const set = ex.sets[roundIdx];
               if (!set) return null;
 
+              const prevDone = ex.sets.slice(0, roundIdx).reverse().find((s) => s.done);
+              const repsPlaceholder = prevDone?.reps || prevDone?.plannedReps || set.plannedReps || "reps";
+              const weightPlaceholder = prevDone?.weight || prevDone?.plannedWeight || set.plannedWeight || "kg";
+              const firstUndoneRound = ex.sets.findIndex((s) => !s.done);
+              const showReplace = !set.done && roundIdx === firstUndoneRound;
+
               return (
                 <View
                   key={i}
@@ -198,16 +206,27 @@ export default function CircuitGroupCard({
                 >
                   {/* Name + target */}
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text
-                      style={{
-                        color: set.done ? circuitColor.text : colors.text,
-                        fontSize: 13,
-                        fontWeight: "600",
-                      }}
-                      numberOfLines={1}
-                    >
-                      {ex.exercise_name}
-                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Text
+                        style={{
+                          flex: 1,
+                          color: set.done ? circuitColor.text : colors.text,
+                          fontSize: 13,
+                          fontWeight: "600",
+                        }}
+                        numberOfLines={1}
+                      >
+                        {ex.exercise_name}
+                      </Text>
+                      {showReplace && (
+                        <TouchableOpacity
+                          onPress={() => onReplaceExercise(exIdx)}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <Text style={{ color: colors.textMuted, fontSize: 13, marginLeft: 4 }}>↔</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                     {ex.target && (
                       <Text style={{ color: colors.textDisabled, fontSize: 11, marginTop: 1 }}>
                         {ex.target}
@@ -222,7 +241,7 @@ export default function CircuitGroupCard({
                         value={set.reps}
                         onChangeText={(v) => onUpdateSet(exIdx, roundIdx, "reps", v)}
                         onBlur={() => onFillDown(exIdx, roundIdx, "reps")}
-                        placeholder="reps"
+                        placeholder={repsPlaceholder}
                         placeholderTextColor={colors.textDisabled}
                         keyboardType="numeric"
                         style={{
@@ -240,7 +259,7 @@ export default function CircuitGroupCard({
                         value={set.weight}
                         onChangeText={(v) => onUpdateSet(exIdx, roundIdx, "weight", v)}
                         onBlur={() => onFillDown(exIdx, roundIdx, "weight")}
-                        placeholder="kg"
+                        placeholder={weightPlaceholder}
                         placeholderTextColor={colors.textDisabled}
                         keyboardType="numeric"
                         style={{

@@ -41,11 +41,13 @@ export type RoutineProgress = {
 
 export type Routine = {
   id: string;
+  enrollment_id: string;
   type: RoutineType;
   status: RoutineStatus;
   progress: RoutineProgress;
   data: { nombre: string; dias: RoutineDay[] };
   created_at: string;
+  // set when the enrollment was created from a coach share
   source_share_id?: string | null;
 };
 

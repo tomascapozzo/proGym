@@ -29,10 +29,21 @@ if (Platform.OS === "android") {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
 }
 
-const pickerData: Record<
-  string,
-  { title: string; options: string[]; multi?: boolean }
-> = {
+const pickerData: Record<string, { title: string; options: string[] }> = {
+  posicion: {
+    title: "Posicion",
+    options: [
+      "Primera linea",
+      "Segunda linea",
+      "Ala",
+      "Octavo",
+      "Medio-scrum",
+      "Apertura",
+      "Centro",
+      "Wing",
+      "Fullback",
+    ],
+  },
   edad: {
     title: "Edad",
     options: [
@@ -45,39 +56,6 @@ const pickerData: Record<
       "46+ años",
     ],
   },
-  profesion: {
-    title: "Tipo de trabajo",
-    options: ["Oficina", "Trabajo de pie", "Trabajo físico", "Mixto"],
-  },
-  disponibilidad: {
-    title: "Días disponibles",
-    options: [
-      "1 día",
-      "2 días",
-      "3 días",
-      "4 días",
-      "5 días",
-      "6 días",
-      "7 días",
-    ],
-  },
-  equipamiento: {
-    title: "Equipamiento",
-    options: ["Gimnasio completo", "Mancuernas", "Peso corporal", "Casa"],
-  },
-  nivel: {
-    title: "Nivel",
-    options: ["Sin experiencia", "1 año", "1–3 años", "3+ años"],
-  },
-  actualidad: {
-    title: "Actualidad",
-    options: ["Fuerza", "Running", "Ambos", "Nada"],
-  },
-  objetivo: {
-    title: "Objetivos",
-    multi: true,
-    options: ["Perder grasa", "Ganar fuerza", "Rendimiento", "Salud"],
-  },
 };
 
 export default function ProfileScreen() {
@@ -86,20 +64,18 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
 
   // Editable fields mirrored from profile
-  const [values, setValues] = useState<Record<string, string>>(() => ({
-    edad: profile?.edad ?? "",
-    profesion: profile?.profesion ?? "",
-    disponibilidad: profile?.disponibilidad ?? "",
-    equipamiento: profile?.equipamiento ?? "",
-    nivel: profile?.nivel ?? "",
-    actualidad: profile?.actualidad ?? "",
-  }));
-  const [multiValues, setMultiValues] = useState<Record<string, string[]>>(
-    () => ({ objetivo: profile?.objetivo ?? [] }),
-  );
+  const [posicion, setPosicion] = useState(profile?.position ?? "");
+  const [edad, setEdad] = useState(profile?.edad ?? "");
   const [peso, setPeso] = useState(profile?.peso ?? "");
   const [altura, setAltura] = useState(profile?.altura ?? "");
-  const [lesiones, setLesiones] = useState(profile?.lesiones ?? "");
+  const [gimnasio, setGimnasio] = useState<"club" | "otro" | "">(
+    (profile?.gimnasio as "club" | "otro" | "") ?? "",
+  );
+  const [lesionesActuales, setLesionesActuales] = useState(!!profile?.lesiones);
+  const [lesionesDesc, setLesionesDesc] = useState(profile?.lesiones ?? "");
+  const [lesionesPrevias, setLesionesPrevias] = useState<
+    { lesion: string; anio: string }[]
+  >(() => (profile?.lesiones_previas as { lesion: string; anio: string }[]) ?? []);
 
   const [currentPicker, setCurrentPicker] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -274,26 +250,15 @@ export default function ProfileScreen() {
   }, [user]);
 
   const handleSelect = (key: string, option: string) => {
-    if (pickerData[key].multi) {
-      const current = multiValues[key] || [];
-      const updated = current.includes(option)
-        ? current.filter((o) => o !== option)
-        : [...current, option];
-      setMultiValues({ ...multiValues, [key]: updated });
-    } else {
-      setValues({ ...values, [key]: option });
-      setCurrentPicker(null);
-    }
+    if (key === "posicion") setPosicion(option);
+    else if (key === "edad") setEdad(option);
+    setCurrentPicker(null);
   };
 
   const renderValue = (key: string) => {
-    if (pickerData[key].multi) {
-      const val = multiValues[key] || [];
-      if (val.length === 0) return "Sin selección";
-      if (val.length === 1) return val[0];
-      return `${val.length} seleccionados`;
-    }
-    return values[key] || "Sin selección";
+    if (key === "posicion") return posicion || "Sin selección";
+    if (key === "edad") return edad || "Sin selección";
+    return "Sin selección";
   };
 
   const handleSave = async () => {
@@ -304,16 +269,13 @@ export default function ProfileScreen() {
     const { error: err } = await supabase
       .from("profiles")
       .update({
-        edad: values.edad || null,
-        profesion: values.profesion || null,
-        disponibilidad: values.disponibilidad || null,
-        equipamiento: values.equipamiento || null,
-        nivel: values.nivel || null,
-        actualidad: values.actualidad || null,
-        objetivo: multiValues.objetivo ?? [],
+        position: posicion || null,
+        edad: edad || null,
         peso: peso.trim() || null,
         altura: altura.trim() || null,
-        lesiones: lesiones.trim() || null,
+        gimnasio: gimnasio || null,
+        lesiones: lesionesActuales ? (lesionesDesc.trim() || null) : null,
+        lesiones_previas: lesionesPrevias.filter((l) => l.lesion.trim()),
       })
       .eq("id", user.id);
 
@@ -331,18 +293,16 @@ export default function ProfileScreen() {
   };
 
   const handleOpenInfoModal = () => {
-    setValues({
-      edad: profile?.edad ?? "",
-      profesion: profile?.profesion ?? "",
-      disponibilidad: profile?.disponibilidad ?? "",
-      equipamiento: profile?.equipamiento ?? "",
-      nivel: profile?.nivel ?? "",
-      actualidad: profile?.actualidad ?? "",
-    });
-    setMultiValues({ objetivo: profile?.objetivo ?? [] });
+    setPosicion(profile?.position ?? "");
+    setEdad(profile?.edad ?? "");
     setPeso(profile?.peso ?? "");
     setAltura(profile?.altura ?? "");
-    setLesiones(profile?.lesiones ?? "");
+    setGimnasio((profile?.gimnasio as "club" | "otro" | "") ?? "");
+    setLesionesActuales(!!profile?.lesiones);
+    setLesionesDesc(profile?.lesiones ?? "");
+    setLesionesPrevias(
+      (profile?.lesiones_previas as { lesion: string; anio: string }[]) ?? [],
+    );
     setError("");
     setInfoModalVisible(true);
   };
@@ -553,45 +513,229 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.modalFullScroll}>
+          <ScrollView
+            contentContainerStyle={styles.modalFullScroll}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.sectionLabel}>DATOS PERSONALES</Text>
             <View style={{ height: 12 }} />
 
-            {Object.keys(pickerData).map((key) => (
-              <TouchableOpacity
-                key={key}
-                onPress={() => setCurrentPicker(key)}
-                style={styles.fieldCard}
-              >
-                <Text style={styles.fieldLabel}>{pickerData[key].title}</Text>
-                <Text style={styles.fieldValue}>{renderValue(key)}</Text>
-              </TouchableOpacity>
-            ))}
+            {/* Posicion picker */}
+            <TouchableOpacity
+              onPress={() => setCurrentPicker("posicion")}
+              style={styles.fieldCard}
+            >
+              <Text style={styles.fieldLabel}>Posicion</Text>
+              <Text style={styles.fieldValue}>{renderValue("posicion")}</Text>
+            </TouchableOpacity>
 
-            <TextInput
-              placeholder="Peso (kg)"
-              placeholderTextColor={colors.textDisabled}
-              keyboardType="numeric"
-              value={peso}
-              onChangeText={setPeso}
-              style={styles.input}
-            />
-            <TextInput
-              placeholder="Altura (cm)"
-              placeholderTextColor={colors.textDisabled}
-              keyboardType="numeric"
-              value={altura}
-              onChangeText={setAltura}
-              style={styles.input}
-            />
-            <TextInput
-              placeholder="Lesiones (opcional)"
-              placeholderTextColor={colors.textDisabled}
-              value={lesiones}
-              onChangeText={setLesiones}
-              multiline
-              style={[styles.input, { minHeight: 72 }]}
-            />
+            {/* Edad picker */}
+            <TouchableOpacity
+              onPress={() => setCurrentPicker("edad")}
+              style={styles.fieldCard}
+            >
+              <Text style={styles.fieldLabel}>Edad</Text>
+              <Text style={styles.fieldValue}>{renderValue("edad")}</Text>
+            </TouchableOpacity>
+
+            {/* Peso + Altura side by side */}
+            <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+              <TextInput
+                placeholder="Peso (kg)"
+                placeholderTextColor={colors.textDisabled}
+                keyboardType="numeric"
+                value={peso}
+                onChangeText={setPeso}
+                style={[styles.input, { flex: 1, marginBottom: 0 }]}
+              />
+              <TextInput
+                placeholder="Altura (cm)"
+                placeholderTextColor={colors.textDisabled}
+                keyboardType="numeric"
+                value={altura}
+                onChangeText={setAltura}
+                style={[styles.input, { flex: 1, marginBottom: 0 }]}
+              />
+            </View>
+
+            {/* Gimnasio */}
+            <View style={{ marginBottom: 10 }}>
+              <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>
+                Gimnasio
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {(["club", "otro"] as const).map((opt) => (
+                  <TouchableOpacity
+                    key={opt}
+                    onPress={() => setGimnasio(opt)}
+                    style={{
+                      flex: 1,
+                      padding: 14,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor:
+                        gimnasio === opt ? colors.accent : colors.border,
+                      backgroundColor:
+                        gimnasio === opt ? colors.accentBg : colors.inputBg,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          gimnasio === opt ? colors.accent : colors.textMuted,
+                        fontWeight: gimnasio === opt ? "700" : "400",
+                        fontSize: 14,
+                      }}
+                    >
+                      {opt === "club" ? "Club" : "Otro"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Lesiones actuales */}
+            <View style={{ marginBottom: 10 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={styles.fieldLabel}>Lesiones actuales</Text>
+                <View style={{ flexDirection: "row", gap: 6 }}>
+                  {([false, true] as const).map((opt) => (
+                    <TouchableOpacity
+                      key={String(opt)}
+                      onPress={() => setLesionesActuales(opt)}
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor:
+                          lesionesActuales === opt
+                            ? colors.accent
+                            : colors.border,
+                        backgroundColor:
+                          lesionesActuales === opt
+                            ? colors.accentBg
+                            : colors.inputBg,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            lesionesActuales === opt
+                              ? colors.accent
+                              : colors.textMuted,
+                          fontWeight:
+                            lesionesActuales === opt ? "700" : "400",
+                          fontSize: 13,
+                        }}
+                      >
+                        {opt ? "Sí" : "No"}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+              {lesionesActuales && (
+                <TextInput
+                  placeholder="Describí la lesión..."
+                  placeholderTextColor={colors.textDisabled}
+                  value={lesionesDesc}
+                  onChangeText={setLesionesDesc}
+                  multiline
+                  style={[styles.input, { minHeight: 72, marginBottom: 0 }]}
+                />
+              )}
+            </View>
+
+            {/* Lesiones previas */}
+            <View style={{ marginBottom: 10 }}>
+              <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>
+                Lesiones previas
+              </Text>
+              {lesionesPrevias.map((item, idx) => (
+                <View
+                  key={idx}
+                  style={{
+                    flexDirection: "row",
+                    gap: 8,
+                    marginBottom: 8,
+                    alignItems: "center",
+                  }}
+                >
+                  <TextInput
+                    placeholder="Lesión"
+                    placeholderTextColor={colors.textDisabled}
+                    value={item.lesion}
+                    onChangeText={(v) =>
+                      setLesionesPrevias((prev) =>
+                        prev.map((l, i) =>
+                          i === idx ? { ...l, lesion: v } : l,
+                        ),
+                      )
+                    }
+                    style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                  />
+                  <TextInput
+                    placeholder="Año"
+                    placeholderTextColor={colors.textDisabled}
+                    value={item.anio}
+                    onChangeText={(v) =>
+                      setLesionesPrevias((prev) =>
+                        prev.map((l, i) =>
+                          i === idx ? { ...l, anio: v } : l,
+                        ),
+                      )
+                    }
+                    keyboardType="numeric"
+                    style={[styles.input, { width: 72, marginBottom: 0 }]}
+                  />
+                  <TouchableOpacity
+                    onPress={() =>
+                      setLesionesPrevias((prev) =>
+                        prev.filter((_, i) => i !== idx),
+                      )
+                    }
+                  >
+                    <Text
+                      style={{
+                        color: colors.error,
+                        fontSize: 20,
+                        paddingHorizontal: 4,
+                      }}
+                    >
+                      ×
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity
+                onPress={() =>
+                  setLesionesPrevias((prev) => [
+                    ...prev,
+                    { lesion: "", anio: "" },
+                  ])
+                }
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 12,
+                  padding: 14,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: colors.accent, fontWeight: "600" }}>
+                  + Agregar lesión
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -923,9 +1067,7 @@ export default function ProfileScreen() {
                 keyExtractor={(item) => item}
                 renderItem={({ item }) => {
                   const isSelected = currentPicker
-                    ? pickerData[currentPicker].multi
-                      ? (multiValues[currentPicker] || []).includes(item)
-                      : values[currentPicker] === item
+                    ? renderValue(currentPicker) === item
                     : false;
                   return (
                     <TouchableOpacity

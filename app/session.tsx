@@ -14,7 +14,7 @@ import { supabase } from "@/lib/supabase";
 import type { SessionExercise } from "@/types/session";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -75,12 +75,11 @@ function buildInitialExercises(
         exercise_name: ej.nombre,
         target: targetParts.join(" · "),
         restSeconds: parseDescanso(ej.descanso ?? ""),
-        sets: Array.from({ length: ej.series }, (_, i) => ({
-          reps: ej.reps?.[i] ?? "",
-          weight: resolvePeso(pesoArray?.[i] ?? ej.peso, ej.nombre, oneRm) ?? fallbackWeight(ej.nombre),
-          rpe: "",
-          done: false,
-        })),
+        sets: Array.from({ length: ej.series }, (_, i) => {
+          const pReps = ej.reps?.[i] !== undefined ? String(ej.reps[i]) : undefined;
+          const pWeight = (resolvePeso(pesoArray?.[i] ?? ej.peso, ej.nombre, oneRm) ?? fallbackWeight(ej.nombre)) || undefined;
+          return { reps: "", weight: "", ...(pReps ? { plannedReps: pReps } : {}), ...(pWeight ? { plannedWeight: pWeight } : {}), rpe: "", done: false };
+        }),
       };
     });
 
@@ -97,12 +96,11 @@ function buildInitialExercises(
           restSeconds: parseDescanso(circ.descanso ?? ""),
           circuitId: `circuit_${circIdx}`,
           circuitName: circ.nombre || `Superset ${circIdx + 1}`,
-          sets: Array.from({ length: circ.rondas }, (_, i) => ({
-            reps: cEx.reps?.[i] ?? "",
-            weight: resolvePeso(pesoArray?.[i] ?? cEx.peso, cEx.nombre, oneRm) ?? fallbackWeight(cEx.nombre),
-            rpe: "",
-            done: false,
-          })),
+          sets: Array.from({ length: circ.rondas }, (_, i) => {
+            const pReps = cEx.reps?.[i] !== undefined ? String(cEx.reps[i]) : undefined;
+            const pWeight = (resolvePeso(pesoArray?.[i] ?? cEx.peso, cEx.nombre, oneRm) ?? fallbackWeight(cEx.nombre)) || undefined;
+            return { reps: "", weight: "", ...(pReps ? { plannedReps: pReps } : {}), ...(pWeight ? { plannedWeight: pWeight } : {}), rpe: "", done: false };
+          }),
         };
       }),
     );
@@ -110,11 +108,14 @@ function buildInitialExercises(
     return [...regularExercises, ...circuitExercises];
   }
   if (params.type === "free" && params.exercises) {
-    return (JSON.parse(params.exercises) as LibraryExercise[]).map((ex) => ({
-      exercise_id: ex.id,
-      exercise_name: ex.name,
-      sets: [{ reps: "", weight: fallbackWeight(ex.name), rpe: "", done: false }],
-    }));
+    return (JSON.parse(params.exercises) as LibraryExercise[]).map((ex) => {
+      const pWeight = fallbackWeight(ex.name);
+      return {
+        exercise_id: ex.id,
+        exercise_name: ex.name,
+        sets: [{ reps: "", weight: "", ...(pWeight ? { plannedWeight: pWeight } : {}), rpe: "", done: false }],
+      };
+    });
   }
   return [];
 }
@@ -129,11 +130,12 @@ function buildRenderGroups(exercises: SessionExercise[]): RenderGroup[] {
   const groups: RenderGroup[] = [];
   const seen = new Set<string>();
   exercises.forEach((ex, i) => {
+    if (ex.archived) return;
     if (!ex.circuitId) {
       groups.push({ kind: "exercise", exIdx: i });
     } else if (!seen.has(ex.circuitId)) {
       seen.add(ex.circuitId);
-      const exIndices = exercises.map((e, idx) => (e.circuitId === ex.circuitId ? idx : -1)).filter((idx) => idx !== -1);
+      const exIndices = exercises.map((e, idx) => (!e.archived && e.circuitId === ex.circuitId ? idx : -1)).filter((idx) => idx !== -1);
       groups.push({ kind: "circuit", circuitId: ex.circuitId, circuitName: ex.circuitName ?? "Superset", exIndices });
     }
   });
@@ -152,10 +154,13 @@ export default function SessionScreen() {
     exercises?: string;
     dayIndex?: string;
     routineId?: string;
+    enrollmentId?: string;
     routineType?: string;
     completedDays?: string;
     totalDays?: string;
   }>();
+
+  const [sessionReady, setSessionReady] = useState(false);
 
   // UI-only state (doesn't need to survive navigation)
   const [finishModalVisible, setFinishModalVisible] = useState(false);
@@ -163,44 +168,49 @@ export default function SessionScreen() {
   const [saving, setSaving] = useState(false);
   const [discardModalVisible, setDiscardModalVisible] = useState(false);
   const [addPickerVisible, setAddPickerVisible] = useState(false);
+  const [replacePickerVisible, setReplacePickerVisible] = useState(false);
+  const [replaceExIdx, setReplaceExIdx] = useState<number | null>(null);
   const [library, setLibrary] = useState<LibraryExercise[]>([]);
   const [loadingLib, setLoadingLib] = useState(false);
 
   // ── On mount: start session once restoration check completes ─────────────
   useEffect(() => {
     if (session.isRestoring) return;
-    if (!session.isActive) {
-      const init = async () => {
-        const title =
-          params.type === "routine" && params.dayData
-            ? (JSON.parse(params.dayData) as any).dia
-            : "Sesión libre";
+    if (session.isActive) {
+      setSessionReady(true);
+      return;
+    }
+    const init = async () => {
+      const title =
+        params.type === "routine" && params.dayData
+          ? (JSON.parse(params.dayData) as any).dia
+          : "Sesión libre";
 
-        let lastWeights: Record<string, number> = {};
-        if (user) {
-          const { data } = await supabase
-            .from("workout_logs")
-            .select("exercises")
-            .eq("user_id", user.id)
-            .order("created_at", { ascending: false })
-            .limit(30);
-          if (data) {
-            for (const log of data) {
-              for (const ex of (log.exercises ?? [])) {
-                if (lastWeights[ex.exercise_name] === undefined) {
-                  const lastSet = [...(ex.sets ?? [])].reverse().find((s: any) => s.weight > 0);
-                  if (lastSet) lastWeights[ex.exercise_name] = lastSet.weight;
-                }
+      let lastWeights: Record<string, number> = {};
+      if (user) {
+        const { data } = await supabase
+          .from("workout_logs")
+          .select("exercises")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(30);
+        if (data) {
+          for (const log of data) {
+            for (const ex of (log.exercises ?? [])) {
+              if (lastWeights[ex.exercise_name] === undefined) {
+                const lastSet = [...(ex.sets ?? [])].reverse().find((s: any) => s.weight > 0);
+                if (lastSet) lastWeights[ex.exercise_name] = lastSet.weight;
               }
             }
           }
         }
+      }
 
-        const exercises = buildInitialExercises(params, profile?.one_rm, lastWeights);
-        session.startSession(title, params, exercises);
-      };
-      init();
-    }
+      const exercises = buildInitialExercises(params, profile?.one_rm, lastWeights);
+      session.startSession(title, params, exercises);
+      setSessionReady(true);
+    };
+    init();
   }, [session.isRestoring]);
 
   // ── Exercise picker (free session) ────────────────────────────────────────
@@ -227,6 +237,30 @@ export default function SessionScreen() {
       ]);
     }
     setAddPickerVisible(false);
+  };
+
+  const openReplaceExercise = async (exIdx: number) => {
+    setReplaceExIdx(exIdx);
+    if (library.length === 0) {
+      setLoadingLib(true);
+      const { data, error } = await supabase
+        .from("exercises")
+        .select("id, name, muscle_group, movement_pattern, equipment")
+        .order("muscle_group")
+        .order("name");
+      setLoadingLib(false);
+      if (error || !data) return;
+      setLibrary(data);
+    }
+    setReplacePickerVisible(true);
+  };
+
+  const replaceExerciseInSession = (ex: LibraryExercise) => {
+    if (replaceExIdx !== null) {
+      session.replaceExercise(replaceExIdx, ex.id, ex.name);
+    }
+    setReplacePickerVisible(false);
+    setReplaceExIdx(null);
   };
 
   // ── Finish session ────────────────────────────────────────────────────────
@@ -289,7 +323,7 @@ export default function SessionScreen() {
       }
     }
 
-    if (sessionParams.routineId && sessionParams.routineType) {
+    if (sessionParams.enrollmentId && sessionParams.routineType) {
       const dayIndex = parseInt(sessionParams.dayIndex ?? "0");
       const completedDays: number[] = JSON.parse(sessionParams.completedDays ?? "[]");
       const totalDays = parseInt(sessionParams.totalDays ?? "1");
@@ -313,9 +347,9 @@ export default function SessionScreen() {
       }
 
       await supabase
-        .from("routines")
+        .from("routine_enrollments")
         .update({ status: newStatus, progress: newProgress })
-        .eq("id", sessionParams.routineId);
+        .eq("id", sessionParams.enrollmentId);
     }
 
     setSaving(false);
@@ -343,6 +377,14 @@ export default function SessionScreen() {
     .filter(Boolean) as string[];
 
   // ─── Render ───────────────────────────────────────────────────────────────
+  if (!sessionReady) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <SessionHeader
@@ -385,6 +427,7 @@ export default function SessionScreen() {
                   onToggleDone={session.toggleDone}
                   onAddRound={() => group.exIndices.forEach((idx) => session.addSet(idx))}
                   onRemoveRound={(roundIdx) => group.exIndices.forEach((idx) => session.removeSet(idx, roundIdx))}
+                  onReplaceExercise={openReplaceExercise}
                 />
               );
             }
@@ -402,6 +445,7 @@ export default function SessionScreen() {
                 onAddSet={session.addSet}
                 onRemoveSet={session.removeSet}
                 onRemoveExercise={session.removeExercise}
+                onReplaceExercise={openReplaceExercise}
                 onToggleMode={session.toggleExerciseMode}
               />
             );
@@ -462,6 +506,15 @@ export default function SessionScreen() {
         library={library}
         loading={loadingLib}
         alreadyAdded={alreadyAddedIds}
+      />
+
+      <ExercisePicker
+        visible={replacePickerVisible}
+        onClose={() => { setReplacePickerVisible(false); setReplaceExIdx(null); }}
+        onSelect={replaceExerciseInSession}
+        library={library}
+        loading={loadingLib}
+        alreadyAdded={[]}
       />
     </View>
   );
