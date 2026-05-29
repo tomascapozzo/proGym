@@ -1,8 +1,3 @@
-import {
-  DarkTheme,
-  DefaultTheme,
-  ThemeProvider,
-} from "@react-navigation/native";
 import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -35,7 +30,7 @@ function RootNavigator() {
   }, [session, profile, clubMembership, loading]);
 
   return (
-    <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+    <>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
@@ -51,7 +46,7 @@ function RootNavigator() {
         />
       </Stack>
       <StatusBar style={isDark ? "light" : "dark"} />
-    </ThemeProvider>
+    </>
   );
 }
 
