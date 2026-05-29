@@ -9,7 +9,8 @@
       "Bash(node -e \"const l=require\\('./package-lock.json'\\); const pkgs=['expo','react-native','react-native-reanimated','react-native-worklets']; pkgs.forEach\\(p=>{ const v=l.packages?.['node_modules/'+p]?.version; console.log\\(p+':', v||'NOT FOUND'\\); }\\)\")",
       "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('react-native-worklets in package.json:', p.dependencies['react-native-worklets']\\)\")",
       "Bash(node -e \"const p=require\\('./package.json'\\); const keys=['expo','react-native','react-native-reanimated','react-native-worklets','react']; keys.forEach\\(k=>console.log\\(k+':', p.dependencies[k]||'not found'\\)\\)\")",
-      "Bash(node -e \"const l=require\\('./package-lock.json'\\); const keys=Object.keys\\(l.packages\\).filter\\(k=>k.includes\\('react-native-worklets'\\)\\); keys.forEach\\(k=>console.log\\(k, l.packages[k].version\\)\\)\")"
+      "Bash(node -e \"const l=require\\('./package-lock.json'\\); const keys=Object.keys\\(l.packages\\).filter\\(k=>k.includes\\('react-native-worklets'\\)\\); keys.forEach\\(k=>console.log\\(k, l.packages[k].version\\)\\)\")",
+      "Bash(node -e \"const l=require\\('./package-lock.json'\\); const k=Object.keys\\(l.packages\\).filter\\(k=>k.includes\\('metro-runtime'\\)\\); k.forEach\\(k=>console.log\\(k, l.packages[k].version\\)\\)\")"
     ]
   },
   "enabledMcpjsonServers": [
