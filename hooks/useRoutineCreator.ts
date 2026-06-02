@@ -12,7 +12,7 @@ import {
 } from "@/types/routine";
 
 export function useRoutineCreator(onSaved: () => void) {
-  const { user } = useAuth();
+  const { user, clubMembership } = useAuth();
 
   // Exercise library
   const [library, setLibrary] = useState<LibraryExercise[]>([]);
@@ -42,11 +42,15 @@ export function useRoutineCreator(onSaved: () => void) {
   const ensureLibrary = async (): Promise<boolean> => {
     if (library.length > 0) return true;
     setLoadingLibrary(true);
-    const { data, error } = await supabase
-      .from("exercises")
+    const clubId = clubMembership?.club_id;
+    const base = supabase
+      .from("exercises_combined")
       .select("id, name, muscle_group, movement_pattern, equipment")
       .order("muscle_group")
       .order("name");
+    const { data, error } = await (clubId
+      ? base.or(`source.eq.global,club_id.eq.${clubId}`)
+      : base.eq("source", "global"));
     setLoadingLibrary(false);
     if (error || !data) return false;
     setLibrary(data);

@@ -2,9 +2,15 @@ import { useAuth } from "@/context/auth-context";
 import { useTheme } from "@/context/theme-context";
 import { supabase } from "@/lib/supabase";
 import type { Club, ClubInvitation, InvitationPreview } from "@/types/club";
+import type {
+  ClubForm,
+  ClubFormQuestion,
+  OneRmOptions,
+  ScaleOptions,
+} from "@/types/forms";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -20,37 +26,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// ─── Picker data ──────────────────────────────────────────────────────────────
-
-const pickerData: Record<string, { title: string; options: string[] }> = {
-  posicion: {
-    title: "Posicion",
-    options: [
-      "Primera linea",
-      "Segunda linea",
-      "Ala",
-      "Octavo",
-      "Medio-scrum",
-      "Apertura",
-      "Centro",
-      "Wing",
-      "Fullback",
-    ],
-  },
-  edad: {
-    title: "Edad",
-    options: [
-      "16 – 20 años",
-      "21 – 25 años",
-      "26 – 30 años",
-      "31 – 35 años",
-      "36 – 40 años",
-      "41 – 45 años",
-      "46+ años",
-    ],
-  },
-};
-
 const INV_ERROR_MESSAGES: Record<string, string> = {
   invalid_code: "Codigo invalido. Verifica que este bien escrito.",
   expired: "Este codigo ya vencio. Pedile uno nuevo al coach.",
@@ -61,7 +36,7 @@ const INV_ERROR_MESSAGES: Record<string, string> = {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function OnboardingScreen() {
-  const { user, clubMembership, refreshProfile } = useAuth();
+  const { user, profile, clubMembership, refreshProfile } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -77,16 +52,52 @@ export default function OnboardingScreen() {
   const [loadingJoin, setLoadingJoin] = useState(false);
 
   // ── Anamnesis step state ───────────────────────────────────────────────────
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [peso, setPeso] = useState("");
-  const [altura, setAltura] = useState("");
-  const [gimnasio, setGimnasio] = useState<"club" | "otro" | "">("");
-  const [lesionesActuales, setLesionesActuales] = useState(false);
-  const [lesionesDesc, setLesionesDesc] = useState("");
-  const [lesionesPrevias, setLesionesPrevias] = useState<{ lesion: string; anio: string }[]>([]);
-  const [currentPicker, setCurrentPicker] = useState<string | null>(null);
+  const [anamnesisForm, setAnamnesisForm] = useState<ClubForm | null>(null);
+  const [questions, setQuestions] = useState<ClubFormQuestion[]>([]);
+  const [answers, setAnswers] = useState<Record<string, string | number | string[]>>({});
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [currentPickerQuestion, setCurrentPickerQuestion] = useState<ClubFormQuestion | null>(null);
   const [loadingForm, setLoadingForm] = useState(false);
   const [formError, setFormError] = useState("");
+
+  useEffect(() => {
+    const clubId = clubMembership?.club_id;
+    if (step === "anamnesis" && clubId) {
+      fetchAnamnesisForm(clubId);
+    }
+  }, [step, clubMembership?.club_id]);
+
+  const fetchAnamnesisForm = async (clubId: string) => {
+    setLoadingQuestions(true);
+    console.log("[anamnesis] fetching form for club_id:", clubId);
+
+    const { data: form, error: formErr } = await supabase
+      .from("club_forms")
+      .select("*")
+      .eq("club_id", clubId)
+      .eq("template_type", "anamnesis")
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle();
+    console.log("[anamnesis] form:", form?.id ?? "not found", "err:", formErr?.message ?? "none");
+
+    if (!form) {
+      setLoadingQuestions(false);
+      return;
+    }
+
+    setAnamnesisForm(form as ClubForm);
+
+    const { data: qs, error: qsErr } = await supabase
+      .from("club_form_questions")
+      .select("*")
+      .eq("form_id", form.id)
+      .order("order_index");
+    console.log("[anamnesis] questions:", qs?.length ?? 0, "err:", qsErr?.message ?? "none");
+
+    setQuestions((qs as ClubFormQuestion[]) ?? []);
+    setLoadingQuestions(false);
+  };
 
   // ── Invitation handlers ────────────────────────────────────────────────────
 
@@ -129,42 +140,104 @@ export default function OnboardingScreen() {
     if (rpcErr) { setInvError(rpcErr.message); setPreview(null); return; }
     if (data?.error) { setInvError(data.error as string); setPreview(null); return; }
 
+    await refreshProfile();
     setStep("anamnesis");
   };
 
   // ── Anamnesis handlers ─────────────────────────────────────────────────────
 
-  const addLesionPrevia = () =>
-    setLesionesPrevias((prev) => [...prev, { lesion: "", anio: "" }]);
-
-  const updateLesionPrevia = (idx: number, field: "lesion" | "anio", val: string) =>
-    setLesionesPrevias((prev) =>
-      prev.map((item, i) => (i === idx ? { ...item, [field]: val } : item)),
-    );
-
-  const removeLesionPrevia = (idx: number) =>
-    setLesionesPrevias((prev) => prev.filter((_, i) => i !== idx));
+  const setAnswer = (questionId: string, value: string | number | string[]) => {
+    setAnswers((prev) => ({ ...prev, [questionId]: value }));
+  };
 
   const handleContinue = async () => {
     if (!user) return;
     setFormError("");
     setLoadingForm(true);
 
-    const { error: err } = await supabase.from("profiles").upsert({
-      id: user.id,
-      position: values.posicion ?? null,
-      edad: values.edad ?? null,
-      peso: peso.trim() || null,
-      altura: altura.trim() || null,
-      gimnasio: gimnasio || null,
-      lesiones: lesionesActuales ? (lesionesDesc.trim() || null) : null,
-      lesiones_previas: lesionesPrevias.filter((l) => l.lesion.trim()),
-      onboarding_completed: true,
-    });
+    console.log("[anamnesis] handleContinue — user:", user.id);
+    console.log("[anamnesis] anamnesisForm:", anamnesisForm?.id ?? "null");
+    console.log("[anamnesis] questions count:", questions.length);
+    console.log("[anamnesis] answers:", JSON.stringify(answers));
+
+    // Validate required questions
+    const missing = questions.filter(
+      (q) =>
+        q.required &&
+        (answers[q.id] === undefined || answers[q.id] === "" || answers[q.id] === null),
+    );
+    console.log("[anamnesis] missing required:", missing.map((q) => q.question_text));
+    if (missing.length > 0) {
+      setFormError("Por favor completá todas las preguntas requeridas.");
+      setLoadingForm(false);
+      return;
+    }
+
+    // Save answers to club_form_answers if a distribution exists
+    if (anamnesisForm && questions.length > 0) {
+      console.log("[anamnesis] looking for distribution — form_id:", anamnesisForm.id, "user_id:", user.id);
+      const { data: dist, error: distErr } = await supabase
+        .from("club_form_distributions")
+        .select("id")
+        .eq("target_user_id", user.id)
+        .eq("form_id", anamnesisForm.id)
+        .maybeSingle();
+      console.log("[anamnesis] distribution:", dist?.id ?? "not found", "err:", distErr?.message ?? "none");
+
+      if (dist) {
+        const { data: response, error: respErr } = await supabase
+          .from("club_form_responses")
+          .upsert(
+            {
+              distribution_id: dist.id,
+              form_id: anamnesisForm.id,
+              user_id: user.id,
+              submitted_at: new Date().toISOString(),
+            },
+            { onConflict: "distribution_id,user_id" },
+          )
+          .select("id")
+          .single();
+        console.log("[anamnesis] response upsert:", response?.id ?? "null", "err:", respErr?.message ?? "none");
+
+        if (!respErr && response) {
+          const answerRows = questions.map((q) => {
+            const val = answers[q.id];
+            return {
+              response_id: response.id,
+              question_id: q.id,
+              answer_text:
+                q.type === "text" || q.type === "yes_no"
+                  ? String(val ?? "") || null
+                  : null,
+              answer_number:
+                q.type === "scale" || q.type === "one_rm"
+                  ? val !== undefined && val !== "" ? Number(val) : null
+                  : null,
+              answer_options:
+                q.type === "multiple_choice"
+                  ? val !== undefined ? [String(val)] : null
+                  : null,
+            };
+          });
+          const { error: answersErr } = await supabase
+            .from("club_form_answers")
+            .upsert(answerRows, { onConflict: "response_id,question_id" });
+          console.log("[anamnesis] answers upsert err:", answersErr?.message ?? "none");
+        }
+      }
+    }
+
+    console.log("[anamnesis] updating profile: onboarding_completed=true");
+    const { error: profileErr } = await supabase
+      .from("profiles")
+      .update({ onboarding_completed: true })
+      .eq("id", user.id);
+    console.log("[anamnesis] profile update err:", profileErr?.message ?? "none", "code:", profileErr?.code ?? "—");
 
     setLoadingForm(false);
 
-    if (err) {
+    if (profileErr) {
       setFormError("Error guardando los datos. Intentá de nuevo.");
       return;
     }
@@ -173,10 +246,7 @@ export default function OnboardingScreen() {
     router.replace("/(tabs)");
   };
 
-  // ── Render helpers ─────────────────────────────────────────────────────────
-
-  const roleLabel = preview?.invitation.role === "coach" ? "Coach" : "Jugador";
-  const roleColor = preview?.invitation.role === "coach" ? colors.blue : colors.accent;
+  // ── Question renderer ──────────────────────────────────────────────────────
 
   const fieldCard = {
     backgroundColor: colors.card,
@@ -187,15 +257,184 @@ export default function OnboardingScreen() {
     borderColor: colors.border,
   };
 
-  const inputStyle = {
-    backgroundColor: colors.card,
-    padding: 16,
-    borderRadius: 12,
-    color: colors.text,
-    borderWidth: 1,
-    borderColor: colors.border,
-    fontSize: 14,
+  const labelStyle = {
+    color: colors.textMuted,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    marginBottom: 8,
   };
+
+  const renderQuestion = (q: ClubFormQuestion) => {
+    switch (q.type) {
+      case "text":
+        return (
+          <View key={q.id} style={fieldCard}>
+            <Text style={labelStyle}>{q.question_text.toUpperCase()}</Text>
+            <TextInput
+              placeholder="Escribí tu respuesta..."
+              placeholderTextColor={colors.textDisabled}
+              value={String(answers[q.id] ?? "")}
+              onChangeText={(v) => setAnswer(q.id, v)}
+              multiline
+              style={{
+                backgroundColor: colors.surface,
+                borderRadius: 10,
+                padding: 12,
+                color: colors.text,
+                borderWidth: 1,
+                borderColor: colors.border,
+                minHeight: 60,
+                fontSize: 14,
+              }}
+            />
+          </View>
+        );
+
+      case "yes_no":
+        return (
+          <View key={q.id} style={fieldCard}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={[labelStyle, { marginBottom: 0, flex: 1 }]}>
+                {q.question_text.toUpperCase()}
+              </Text>
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                {(["si", "no"] as const).map((val) => (
+                  <TouchableOpacity
+                    key={val}
+                    onPress={() => setAnswer(q.id, val)}
+                    style={{
+                      paddingHorizontal: 14,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      backgroundColor: answers[q.id] === val ? colors.accent : colors.surface,
+                      borderWidth: 1,
+                      borderColor: answers[q.id] === val ? colors.accent : colors.border,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: answers[q.id] === val ? colors.accentText : colors.textMuted,
+                        fontWeight: "600",
+                        fontSize: 13,
+                      }}
+                    >
+                      {val === "si" ? "Sí" : "No"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+        );
+
+      case "multiple_choice":
+        return (
+          <TouchableOpacity
+            key={q.id}
+            onPress={() => setCurrentPickerQuestion(q)}
+            style={fieldCard}
+          >
+            <Text style={labelStyle}>{q.question_text.toUpperCase()}</Text>
+            <Text
+              style={{
+                color: answers[q.id] ? colors.text : colors.textDisabled,
+                fontSize: 15,
+              }}
+            >
+              {String(answers[q.id] ?? "Seleccionar")}
+            </Text>
+          </TouchableOpacity>
+        );
+
+      case "scale": {
+        const opts = q.options as ScaleOptions;
+        const range = Array.from(
+          { length: opts.max - opts.min + 1 },
+          (_, i) => opts.min + i,
+        );
+        return (
+          <View key={q.id} style={fieldCard}>
+            <Text style={labelStyle}>{q.question_text.toUpperCase()}</Text>
+            {(opts.min_label || opts.max_label) && (
+              <View
+                style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}
+              >
+                <Text style={{ color: colors.textMuted, fontSize: 11 }}>{opts.min_label}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11 }}>{opts.max_label}</Text>
+              </View>
+            )}
+            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+              {range.map((n) => (
+                <TouchableOpacity
+                  key={n}
+                  onPress={() => setAnswer(q.id, n)}
+                  style={{
+                    flex: 1,
+                    minWidth: 36,
+                    paddingVertical: 10,
+                    borderRadius: 10,
+                    alignItems: "center",
+                    backgroundColor:
+                      answers[q.id] === n ? colors.accent : colors.surface,
+                    borderWidth: 1,
+                    borderColor:
+                      answers[q.id] === n ? colors.accent : colors.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color:
+                        answers[q.id] === n ? colors.accentText : colors.textMuted,
+                      fontWeight: "600",
+                      fontSize: 14,
+                    }}
+                  >
+                    {n}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        );
+      }
+
+      case "one_rm": {
+        const opts = q.options as OneRmOptions | null;
+        const label = opts?.exercise_name
+          ? `${q.question_text.toUpperCase()} — ${opts.exercise_name}`
+          : q.question_text.toUpperCase();
+        return (
+          <View key={q.id} style={fieldCard}>
+            <Text style={labelStyle}>{label}</Text>
+            <TextInput
+              placeholder="kg"
+              placeholderTextColor={colors.textDisabled}
+              keyboardType="numeric"
+              value={String(answers[q.id] ?? "")}
+              onChangeText={(v) => setAnswer(q.id, v)}
+              style={{
+                backgroundColor: colors.surface,
+                borderRadius: 10,
+                padding: 12,
+                color: colors.text,
+                borderWidth: 1,
+                borderColor: colors.border,
+                fontSize: 15,
+              }}
+            />
+          </View>
+        );
+      }
+
+      default:
+        return null;
+    }
+  };
+
+  // ── Render helpers ─────────────────────────────────────────────────────────
+
+  const roleLabel = preview?.invitation.role === "coach" ? "Coach" : "Jugador";
+  const roleColor = preview?.invitation.role === "coach" ? colors.blue : colors.accent;
 
   // ── Invitation step ────────────────────────────────────────────────────────
 
@@ -423,210 +662,11 @@ export default function OnboardingScreen() {
           Esto ayuda a tu coach a personalizar tu plan
         </Text>
 
-        {/* ── POSICIÓN ── */}
-        <TouchableOpacity
-          onPress={() => setCurrentPicker("posicion")}
-          style={fieldCard}
-        >
-          <Text style={{ color: colors.textMuted, fontSize: 11, letterSpacing: 0.5, marginBottom: 4 }}>
-            POSICIÓN
-          </Text>
-          <Text style={{ color: values.posicion ? colors.text : colors.textDisabled, fontSize: 15 }}>
-            {values.posicion || "Seleccionar"}
-          </Text>
-        </TouchableOpacity>
-
-        {/* ── EDAD ── */}
-        <TouchableOpacity
-          onPress={() => setCurrentPicker("edad")}
-          style={fieldCard}
-        >
-          <Text style={{ color: colors.textMuted, fontSize: 11, letterSpacing: 0.5, marginBottom: 4 }}>
-            EDAD
-          </Text>
-          <Text style={{ color: values.edad ? colors.text : colors.textDisabled, fontSize: 15 }}>
-            {values.edad || "Seleccionar"}
-          </Text>
-        </TouchableOpacity>
-
-        {/* ── PESO / ALTURA ── */}
-        <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
-          <View style={{ flex: 1 }}>
-            <TextInput
-              placeholder="Peso (kg)"
-              placeholderTextColor={colors.textDisabled}
-              keyboardType="numeric"
-              value={peso}
-              onChangeText={setPeso}
-              style={[inputStyle, { marginBottom: 0 }]}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <TextInput
-              placeholder="Altura (cm)"
-              placeholderTextColor={colors.textDisabled}
-              keyboardType="numeric"
-              value={altura}
-              onChangeText={setAltura}
-              style={[inputStyle, { marginBottom: 0 }]}
-            />
-          </View>
-        </View>
-
-        {/* ── GIMNASIO ── */}
-        <View style={[fieldCard, { marginTop: 0 }]}>
-          <Text style={{ color: colors.textMuted, fontSize: 11, letterSpacing: 0.5, marginBottom: 10 }}>
-            GIMNASIO
-          </Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            {(["club", "otro"] as const).map((opt) => (
-              <TouchableOpacity
-                key={opt}
-                onPress={() => setGimnasio(opt)}
-                style={{
-                  flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 10,
-                  alignItems: "center",
-                  backgroundColor: gimnasio === opt ? colors.accent : colors.surface,
-                  borderWidth: 1,
-                  borderColor: gimnasio === opt ? colors.accent : colors.border,
-                }}
-              >
-                <Text
-                  style={{
-                    color: gimnasio === opt ? colors.accentText : colors.textMuted,
-                    fontWeight: "600",
-                    fontSize: 14,
-                  }}
-                >
-                  {opt === "club" ? "Club" : "Otro"}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* ── LESIONES ACTUALES ── */}
-        <View style={fieldCard}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ color: colors.textMuted, fontSize: 11, letterSpacing: 0.5 }}>
-              LESIONES ACTUALES
-            </Text>
-            <View style={{ flexDirection: "row", gap: 6 }}>
-              {([false, true] as const).map((val) => (
-                <TouchableOpacity
-                  key={String(val)}
-                  onPress={() => setLesionesActuales(val)}
-                  style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 6,
-                    borderRadius: 8,
-                    backgroundColor: lesionesActuales === val ? colors.accent : colors.surface,
-                    borderWidth: 1,
-                    borderColor: lesionesActuales === val ? colors.accent : colors.border,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: lesionesActuales === val ? colors.accentText : colors.textMuted,
-                      fontWeight: "600",
-                      fontSize: 13,
-                    }}
-                  >
-                    {val ? "Sí" : "No"}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-          {lesionesActuales && (
-            <TextInput
-              placeholder="Describí la lesión..."
-              placeholderTextColor={colors.textDisabled}
-              value={lesionesDesc}
-              onChangeText={setLesionesDesc}
-              multiline
-              style={{
-                marginTop: 12,
-                backgroundColor: colors.surface,
-                borderRadius: 10,
-                padding: 12,
-                color: colors.text,
-                borderWidth: 1,
-                borderColor: colors.border,
-                minHeight: 72,
-                fontSize: 14,
-              }}
-            />
-          )}
-        </View>
-
-        {/* ── LESIONES PREVIAS ── */}
-        <View style={fieldCard}>
-          <Text style={{ color: colors.textMuted, fontSize: 11, letterSpacing: 0.5, marginBottom: 12 }}>
-            LESIONES PREVIAS
-          </Text>
-
-          {lesionesPrevias.map((item, idx) => (
-            <View key={idx} style={{ flexDirection: "row", gap: 8, marginBottom: 8, alignItems: "center" }}>
-              <TextInput
-                placeholder="Lesión"
-                placeholderTextColor={colors.textDisabled}
-                value={item.lesion}
-                onChangeText={(v) => updateLesionPrevia(idx, "lesion", v)}
-                style={{
-                  flex: 2,
-                  backgroundColor: colors.surface,
-                  borderRadius: 10,
-                  padding: 10,
-                  color: colors.text,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  fontSize: 14,
-                }}
-              />
-              <TextInput
-                placeholder="Año"
-                placeholderTextColor={colors.textDisabled}
-                value={item.anio}
-                onChangeText={(v) => updateLesionPrevia(idx, "anio", v)}
-                keyboardType="numeric"
-                maxLength={4}
-                style={{
-                  flex: 1,
-                  backgroundColor: colors.surface,
-                  borderRadius: 10,
-                  padding: 10,
-                  color: colors.text,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  fontSize: 14,
-                  textAlign: "center",
-                }}
-              />
-              <TouchableOpacity onPress={() => removeLesionPrevia(idx)} style={{ padding: 4 }}>
-                <Text style={{ color: colors.error, fontSize: 20, lineHeight: 22 }}>×</Text>
-              </TouchableOpacity>
-            </View>
-          ))}
-
-          <TouchableOpacity
-            onPress={addLesionPrevia}
-            style={{
-              paddingVertical: 10,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: colors.border,
-              alignItems: "center",
-              marginTop: lesionesPrevias.length > 0 ? 4 : 0,
-            }}
-          >
-            <Text style={{ color: colors.accent, fontWeight: "600", fontSize: 13 }}>
-              + Agregar lesión
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {loadingQuestions ? (
+          <ActivityIndicator color={colors.accent} style={{ marginBottom: 24 }} />
+        ) : (
+          questions.map((q) => renderQuestion(q))
+        )}
 
         {formError ? (
           <Text style={{ color: colors.error, textAlign: "center", marginBottom: 12 }}>
@@ -636,13 +676,13 @@ export default function OnboardingScreen() {
 
         <TouchableOpacity
           onPress={handleContinue}
-          disabled={loadingForm}
+          disabled={loadingForm || loadingQuestions}
           style={{
             backgroundColor: colors.accent,
             padding: 18,
             borderRadius: 14,
             alignItems: "center",
-            opacity: loadingForm ? 0.7 : 1,
+            opacity: loadingForm || loadingQuestions ? 0.7 : 1,
             marginTop: 8,
           }}
         >
@@ -656,15 +696,15 @@ export default function OnboardingScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* PICKER MODAL */}
+      {/* PICKER MODAL for multiple_choice questions */}
       <Modal
-        visible={!!currentPicker}
+        visible={!!currentPickerQuestion}
         transparent
         animationType="slide"
         presentationStyle="overFullScreen"
       >
         <Pressable
-          onPress={() => setCurrentPicker(null)}
+          onPress={() => setCurrentPickerQuestion(null)}
           style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}
         >
           <Pressable>
@@ -678,19 +718,26 @@ export default function OnboardingScreen() {
               }}
             >
               <Text style={{ color: colors.text, fontSize: 16, marginBottom: 10, fontWeight: "600" }}>
-                {currentPicker && pickerData[currentPicker].title}
+                {currentPickerQuestion?.question_text}
               </Text>
               <FlatList
-                data={currentPicker ? pickerData[currentPicker].options : []}
+                data={
+                  currentPickerQuestion
+                    ? (currentPickerQuestion.options as string[]) ?? []
+                    : []
+                }
                 keyExtractor={(item) => item}
                 renderItem={({ item }) => {
-                  const isSelected = currentPicker ? values[currentPicker] === item : false;
+                  const isSelected =
+                    currentPickerQuestion
+                      ? answers[currentPickerQuestion.id] === item
+                      : false;
                   return (
                     <TouchableOpacity
                       onPress={() => {
-                        if (currentPicker) {
-                          setValues((prev) => ({ ...prev, [currentPicker]: item }));
-                          setCurrentPicker(null);
+                        if (currentPickerQuestion) {
+                          setAnswer(currentPickerQuestion.id, item);
+                          setCurrentPickerQuestion(null);
                         }
                       }}
                       style={{
@@ -706,7 +753,7 @@ export default function OnboardingScreen() {
                   );
                 }}
               />
-              <TouchableOpacity onPress={() => setCurrentPicker(null)}>
+              <TouchableOpacity onPress={() => setCurrentPickerQuestion(null)}>
                 <Text style={{ color: colors.accent, textAlign: "right", marginTop: 10, fontWeight: "600" }}>
                   Listo
                 </Text>

@@ -348,9 +348,6 @@ export default function ProfileScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerName}>{profile?.name ?? ""}</Text>
-            {profile?.username ? (
-              <Text style={styles.headerUsername}>@{profile.username}</Text>
-            ) : null}
           </View>
           <TouchableOpacity onPress={openSettings} style={styles.settingsBtn}>
             <View style={styles.hamburgerLine} />
@@ -470,7 +467,6 @@ export default function ProfileScreen() {
         {[
           { label: "Historial", subtitle: "Tus entrenamientos registrados", route: "/history" },
           { label: "Progreso", subtitle: "Tu evolución a lo largo del tiempo", route: "/progress" },
-          { label: "Social", subtitle: "Ranking y amigos", route: "/social" },
         ].map((item) => (
           <TouchableOpacity
             key={item.route}

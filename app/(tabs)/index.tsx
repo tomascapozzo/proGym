@@ -4,6 +4,7 @@ import { useClub } from "@/hooks/useClub";
 import { useSharedRoutines } from "@/hooks/useSharedRoutines";
 import { supabase } from "@/lib/supabase";
 import { getNextDay, type Routine, type RoutineDay } from "@/types/routine";
+import type { PendingDistribution } from "@/types/forms";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -36,6 +37,7 @@ export default function HomeScreen() {
   const { syncSharedRoutines } = useSharedRoutines();
   const [routine, setRoutine] = useState<Routine | null>(null);
   const [loadingRoutine, setLoadingRoutine] = useState(true);
+  const [pendingForms, setPendingForms] = useState<PendingDistribution[]>([]);
 
   const quote = useMemo(() => QUOTES[new Date().getDate() % QUOTES.length], []);
 
@@ -100,6 +102,24 @@ export default function HomeScreen() {
       setRoutine(null);
     }
     setLoadingRoutine(false);
+
+    // Pending wellness forms
+    const { data: rawDist } = await supabase
+      .from("club_form_distributions")
+      .select(
+        "id, form_id, due_at, form:club_forms!form_id(id, title, status, template_type), responses:club_form_responses!distribution_id(submitted_at)",
+      )
+      .eq("target_type", "player")
+      .eq("target_user_id", user!.id);
+
+    const pending = ((rawDist ?? []) as any[]).filter(
+      (d) =>
+        d.form?.template_type === "wellness" &&
+        d.form?.status === "active" &&
+        (!(d.responses as any[]).length ||
+          (d.responses as any[])[0]?.submitted_at === null),
+    );
+    setPendingForms(pending as PendingDistribution[]);
   };
 
   const nextDay = useMemo(() => {
@@ -444,6 +464,59 @@ export default function HomeScreen() {
             </View>
           )}
         </View>
+
+        {/* ── FORMULARIOS PENDIENTES ── */}
+        {pendingForms.length > 0 && (
+          <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: "700", marginBottom: 12 }}>
+              Formularios pendientes
+            </Text>
+            {pendingForms.map((dist) => (
+              <TouchableOpacity
+                key={dist.id}
+                onPress={() =>
+                  router.push({ pathname: "/form", params: { distributionId: dist.id } })
+                }
+                activeOpacity={0.85}
+                style={{
+                  backgroundColor: colors.card,
+                  borderRadius: 16,
+                  padding: 16,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 14,
+                  marginBottom: 10,
+                }}
+              >
+                <View
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 12,
+                    backgroundColor: colors.surface,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="document-text-outline" size={20} color={colors.textMuted} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontWeight: "700", fontSize: 14 }}>
+                    {dist.form.title}
+                  </Text>
+                  {dist.due_at && (
+                    <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 1 }}>
+                      Vence {new Date(dist.due_at).toLocaleDateString("es-AR")}
+                    </Text>
+                  )}
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {/* ── PR'S ACTUALES ── */}
         {topPrs.length > 0 && (

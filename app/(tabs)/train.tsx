@@ -128,6 +128,7 @@ export default function TrainScreen() {
         routineType: previewRoutine.type,
         completedDays: JSON.stringify(previewRoutine.progress?.completed_days ?? []),
         totalDays: String(previewRoutine.data.dias.length),
+        rpePrompt: previewRoutine.data.rpe_prompt ?? "sesion",
       },
     });
   };

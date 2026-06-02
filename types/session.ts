@@ -1,4 +1,6 @@
-export type SetEntry = { reps: string; weight: string; rpe: string; done: boolean; plannedReps?: string; plannedWeight?: string };
+export type RpePromptType = "serie" | "bloque" | "sesion";
+
+export type SetEntry = { reps: string; weight: string; rpe: string; done: boolean; skipped?: boolean; plannedReps?: string; plannedWeight?: string };
 
 export type SessionExercise = {
   exercise_id?: string;

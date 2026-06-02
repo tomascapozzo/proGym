@@ -45,7 +45,7 @@ export type Routine = {
   type: RoutineType;
   status: RoutineStatus;
   progress: RoutineProgress;
-  data: { nombre: string; dias: RoutineDay[] };
+  data: { nombre: string; dias: RoutineDay[]; rpe_prompt?: import("@/types/session").RpePromptType };
   created_at: string;
   // set when the enrollment was created from a coach share
   source_share_id?: string | null;

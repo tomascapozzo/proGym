@@ -1,5 +1,5 @@
 import type { SessionExercise } from "@/types/session";
-import React, { useState } from "react";
+import React, { memo, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
 type Props = {
@@ -9,15 +9,23 @@ type Props = {
   circuitIndex: number;
   globalMode: "simple" | "detailed";
   colors: any;
-  onUpdateSet: (exIdx: number, roundIdx: number, field: "reps" | "weight" | "rpe", value: string) => void;
+  onUpdateSet: (exIdx: number, roundIdx: number, field: "reps" | "weight", value: string) => void;
   onFillDown: (exIdx: number, roundIdx: number, field: "reps" | "weight") => void;
   onToggleDone: (exIdx: number, roundIdx: number) => void;
+  onSkipSet: (exIdx: number, roundIdx: number) => void;
   onAddRound: () => void;
   onRemoveRound: (roundIdx: number) => void;
   onReplaceExercise: (exIdx: number) => void;
+  isReordering?: boolean;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onMoveExerciseUp?: (liveExIdx: number) => void;
+  onMoveExerciseDown?: (liveExIdx: number) => void;
 };
 
-export default function CircuitGroupCard({
+function CircuitGroupCard({
   exercises,
   exIndices,
   circuitName,
@@ -27,9 +35,17 @@ export default function CircuitGroupCard({
   onUpdateSet,
   onFillDown,
   onToggleDone,
+  onSkipSet,
   onAddRound,
   onRemoveRound,
   onReplaceExercise,
+  isReordering,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
+  onMoveExerciseUp,
+  onMoveExerciseDown,
 }: Props) {
   const rondas = exercises[0]?.sets.length ?? 0;
   const circuitColor = colors.circuitPalette[circuitIndex % colors.circuitPalette.length];
@@ -56,6 +72,142 @@ export default function CircuitGroupCard({
       return next;
     });
   };
+
+  if (isReordering) {
+    return (
+      <View
+        style={{
+          backgroundColor: colors.card,
+          borderRadius: 14,
+          paddingVertical: 12,
+          paddingHorizontal: 16,
+          marginBottom: 10,
+          borderWidth: 1,
+          borderColor: circuitColor.text,
+          borderLeftWidth: 3,
+        }}
+      >
+        {/* Circuit header row */}
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: exercises.length > 0 ? 10 : 0 }}>
+          <Text style={{ color: colors.textMuted, fontSize: 16, marginRight: 10 }}>≡</Text>
+          <View
+            style={{
+              backgroundColor: circuitColor.bg,
+              borderRadius: 6,
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+              marginRight: 8,
+            }}
+          >
+            <Text style={{ color: circuitColor.text, fontSize: 10, fontWeight: "700" }}>CIRCUITO</Text>
+          </View>
+          <Text style={{ flex: 1, color: colors.text, fontWeight: "700", fontSize: 14 }} numberOfLines={1}>
+            {circuitName}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            <TouchableOpacity
+              onPress={onMoveUp}
+              disabled={!canMoveUp}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                backgroundColor: colors.surface,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: canMoveUp ? colors.border : "transparent",
+              }}
+            >
+              <Text style={{ color: canMoveUp ? colors.text : colors.textDisabled, fontSize: 16 }}>↑</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onMoveDown}
+              disabled={!canMoveDown}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                backgroundColor: colors.surface,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: canMoveDown ? colors.border : "transparent",
+              }}
+            >
+              <Text style={{ color: canMoveDown ? colors.text : colors.textDisabled, fontSize: 16 }}>↓</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Exercises within circuit */}
+        {exercises.map((ex, i) => {
+          const liveExIdx = exIndices[i];
+          const isFirst = i === 0;
+          const isLast = i === exercises.length - 1;
+          return (
+            <View
+              key={i}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.surface,
+                borderRadius: 10,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                marginBottom: isLast ? 0 : 6,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontSize: 13, fontWeight: "600" }} numberOfLines={1}>
+                  {ex.exercise_name}
+                </Text>
+                {ex.target && (
+                  <Text style={{ color: colors.textDisabled, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                    {ex.target}
+                  </Text>
+                )}
+              </View>
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                <TouchableOpacity
+                  onPress={() => onMoveExerciseUp?.(liveExIdx)}
+                  disabled={isFirst}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    backgroundColor: colors.card,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: isFirst ? "transparent" : colors.border,
+                  }}
+                >
+                  <Text style={{ color: isFirst ? colors.textDisabled : colors.text, fontSize: 14 }}>↑</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => onMoveExerciseDown?.(liveExIdx)}
+                  disabled={isLast}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    backgroundColor: colors.card,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: isLast ? "transparent" : colors.border,
+                  }}
+                >
+                  <Text style={{ color: isLast ? colors.textDisabled : colors.text, fontSize: 14 }}>↓</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    );
+  }
 
   return (
     <View
@@ -187,10 +339,49 @@ export default function CircuitGroupCard({
               if (!set) return null;
 
               const prevDone = ex.sets.slice(0, roundIdx).reverse().find((s) => s.done);
-              const repsPlaceholder = prevDone?.reps || prevDone?.plannedReps || set.plannedReps || "reps";
+              const repsPlaceholder = set.plannedReps || prevDone?.reps || prevDone?.plannedReps || "reps";
               const weightPlaceholder = prevDone?.weight || prevDone?.plannedWeight || set.plannedWeight || "kg";
               const firstUndoneRound = ex.sets.findIndex((s) => !s.done);
               const showReplace = !set.done && roundIdx === firstUndoneRound;
+
+              // Skipped exercise in this round
+              if (set.skipped) {
+                return (
+                  <View
+                    key={i}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      backgroundColor: colors.surface,
+                      borderRadius: 10,
+                      padding: 10,
+                      marginBottom: i < exercises.length - 1 ? 6 : 0,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    <Text style={{ color: colors.textMuted, fontSize: 13, fontWeight: "600", flex: 1 }} numberOfLines={1}>
+                      {ex.exercise_name}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 12, marginRight: 8 }}>Omitida</Text>
+                    <TouchableOpacity
+                      onPress={() => handleToggleDone(exIdx, roundIdx)}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 17,
+                        backgroundColor: colors.surface,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <Text style={{ color: colors.textMuted, fontSize: 14 }}>↩</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              }
 
               return (
                 <View
@@ -235,7 +426,7 @@ export default function CircuitGroupCard({
                   </View>
 
                   {/* Detailed inputs */}
-                  {globalMode === "detailed" && (
+                  {globalMode === "detailed" && !set.done && (
                     <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 8, gap: 4 }}>
                       <TextInput
                         value={set.reps}
@@ -273,24 +464,27 @@ export default function CircuitGroupCard({
                           fontSize: 14,
                         }}
                       />
-                      <TextInput
-                        value={set.rpe}
-                        onChangeText={(v) => onUpdateSet(exIdx, roundIdx, "rpe", v)}
-                        placeholder="RPE"
-                        placeholderTextColor={colors.textDisabled}
-                        keyboardType="numeric"
-                        style={{
-                          width: 46,
-                          backgroundColor: colors.card,
-                          borderRadius: 8,
-                          paddingVertical: 6,
-                          paddingHorizontal: 6,
-                          color: colors.text,
-                          textAlign: "center",
-                          fontSize: 14,
-                        }}
-                      />
                     </View>
+                  )}
+
+                  {/* Skip button (both modes, only for undone sets) */}
+                  {!set.done && (
+                    <TouchableOpacity
+                      onPress={() => onSkipSet(exIdx, roundIdx)}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 10,
+                        backgroundColor: set.done ? circuitColor.bg : colors.card,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        marginLeft: 6,
+                      }}
+                    >
+                      <Text style={{ color: colors.textMuted, fontSize: 16 }}>→</Text>
+                    </TouchableOpacity>
                   )}
 
                   {/* Done toggle */}
@@ -343,3 +537,19 @@ export default function CircuitGroupCard({
     </View>
   );
 }
+
+export default memo(CircuitGroupCard, (prev, next) => {
+  if (prev.exercises.length !== next.exercises.length) return false;
+  for (let i = 0; i < prev.exercises.length; i++) {
+    if (prev.exercises[i] !== next.exercises[i]) return false;
+  }
+  return (
+    prev.circuitName === next.circuitName &&
+    prev.circuitIndex === next.circuitIndex &&
+    prev.globalMode === next.globalMode &&
+    prev.colors === next.colors &&
+    prev.isReordering === next.isReordering &&
+    prev.canMoveUp === next.canMoveUp &&
+    prev.canMoveDown === next.canMoveDown
+  );
+});

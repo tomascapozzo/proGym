@@ -5,16 +5,18 @@ import DiscardSessionModal from "@/components/session/DiscardSessionModal";
 import ExerciseCard from "@/components/session/ExerciseCard";
 import FinishSessionModal from "@/components/session/FinishSessionModal";
 import RestTimerModal from "@/components/session/RestTimerModal";
+import RpePromptModal from "@/components/session/RpePromptModal";
 import SessionHeader from "@/components/session/SessionHeader";
 import TrackingModeToggle from "@/components/session/TrackingModeToggle";
 import { useAuth } from "@/context/auth-context";
 import { useSession } from "@/context/session-context";
 import { useTheme } from "@/context/theme-context";
+import { buildRenderGroups } from "@/lib/session-utils";
 import { supabase } from "@/lib/supabase";
 import type { SessionExercise } from "@/types/session";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -120,28 +122,6 @@ function buildInitialExercises(
   return [];
 }
 
-// ─── Render grouping ──────────────────────────────────────────────────────────
-
-type RenderGroup =
-  | { kind: "exercise"; exIdx: number }
-  | { kind: "circuit"; circuitId: string; circuitName: string; exIndices: number[] };
-
-function buildRenderGroups(exercises: SessionExercise[]): RenderGroup[] {
-  const groups: RenderGroup[] = [];
-  const seen = new Set<string>();
-  exercises.forEach((ex, i) => {
-    if (ex.archived) return;
-    if (!ex.circuitId) {
-      groups.push({ kind: "exercise", exIdx: i });
-    } else if (!seen.has(ex.circuitId)) {
-      seen.add(ex.circuitId);
-      const exIndices = exercises.map((e, idx) => (!e.archived && e.circuitId === ex.circuitId ? idx : -1)).filter((idx) => idx !== -1);
-      groups.push({ kind: "circuit", circuitId: ex.circuitId, circuitName: ex.circuitName ?? "Superset", exIndices });
-    }
-  });
-  return groups;
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SessionScreen() {
@@ -158,13 +138,17 @@ export default function SessionScreen() {
     routineType?: string;
     completedDays?: string;
     totalDays?: string;
+    rpePrompt?: string;
   }>();
+
+  const rpePrompt = params.rpePrompt ?? "sesion";
 
   const [sessionReady, setSessionReady] = useState(false);
 
   // UI-only state (doesn't need to survive navigation)
   const [finishModalVisible, setFinishModalVisible] = useState(false);
   const [sessionNotes, setSessionNotes] = useState("");
+  const [sessionRpe, setSessionRpe] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [discardModalVisible, setDiscardModalVisible] = useState(false);
   const [addPickerVisible, setAddPickerVisible] = useState(false);
@@ -172,6 +156,7 @@ export default function SessionScreen() {
   const [replaceExIdx, setReplaceExIdx] = useState<number | null>(null);
   const [library, setLibrary] = useState<LibraryExercise[]>([]);
   const [loadingLib, setLoadingLib] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
 
   // ── On mount: start session once restoration check completes ─────────────
   useEffect(() => {
@@ -207,7 +192,7 @@ export default function SessionScreen() {
       }
 
       const exercises = buildInitialExercises(params, profile?.one_rm, lastWeights);
-      session.startSession(title, params, exercises);
+      session.startSession(title, { ...params, rpePrompt }, exercises);
       setSessionReady(true);
     };
     init();
@@ -279,7 +264,7 @@ export default function SessionScreen() {
         const mode = ex.trackingMode ?? trackingMode;
         const sets =
           mode === "simple"
-            ? ex.sets.filter((s) => s.done).map(() => ({ reps: 0, weight: 0 }))
+            ? ex.sets.filter((s) => s.done && !s.skipped).map(() => ({ reps: 0, weight: 0 }))
             : ex.sets
                 .filter((s) => s.reps !== "" || s.weight !== "")
                 .map((s) => ({
@@ -296,11 +281,13 @@ export default function SessionScreen() {
       const routineDayName = sessionParams.dayData
         ? (JSON.parse(sessionParams.dayData) as any).dia ?? null
         : null;
+      const sessionRpeValue = sessionParams.rpePrompt === "sesion" || !sessionParams.rpePrompt ? sessionRpe : null;
       let { error: insertError } = await supabase.from("workout_logs").insert({
         user_id: user.id,
         exercises: loggedExercises,
         duration_seconds: elapsed,
         notes: sessionNotes.trim() || null,
+        rpe: sessionRpeValue,
         routine_id: sessionParams.routineId ?? null,
         routine_day_index: sessionParams.dayIndex ? parseInt(sessionParams.dayIndex) : null,
         routine_day_name: routineDayName,
@@ -311,6 +298,7 @@ export default function SessionScreen() {
           exercises: loggedExercises,
           duration_seconds: elapsed,
           notes: sessionNotes.trim() || null,
+          rpe: sessionRpeValue,
           routine_id: null,
           routine_day_index: null,
           routine_day_name: routineDayName,
@@ -357,6 +345,16 @@ export default function SessionScreen() {
     router.replace("/(tabs)/train");
   };
 
+  // ── RPE handlers ─────────────────────────────────────────────────────────
+  const handleRpeSubmit = (value: number) => {
+    if (!session.pendingRpe) return;
+    const { setIdx, affectedExIndices } = session.pendingRpe;
+    affectedExIndices.forEach((exIdx) => {
+      session.updateSet(exIdx, setIdx, "rpe", String(value));
+    });
+    session.clearPendingRpe();
+  };
+
   // ── Minimize: go back to tabs while keeping session alive in context ───────
   const handleMinimize = () => {
     router.replace("/(tabs)");
@@ -372,6 +370,11 @@ export default function SessionScreen() {
   };
 
   // ── Derived ───────────────────────────────────────────────────────────────
+  const renderGroups = useMemo(
+    () => buildRenderGroups(session.sessionExercises),
+    [session.sessionExercises],
+  );
+
   const alreadyAddedIds = session.sessionExercises
     .map((e) => e.exercise_id)
     .filter(Boolean) as string[];
@@ -404,12 +407,25 @@ export default function SessionScreen() {
         onChange={session.setTrackingMode}
       />
 
+      <TouchableOpacity
+        onPress={() => setIsReordering((v) => !v)}
+        style={{
+          alignSelf: "flex-end",
+          paddingHorizontal: 16,
+          paddingVertical: 6,
+        }}
+      >
+        <Text style={{ color: isReordering ? colors.accent : colors.textMuted, fontSize: 13, fontWeight: isReordering ? "700" : "400" }}>
+          {isReordering ? "Listo" : "Reordenar"}
+        </Text>
+      </TouchableOpacity>
+
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <ScrollView
           contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
           keyboardShouldPersistTaps="handled"
         >
-          {buildRenderGroups(session.sessionExercises).map((group, groupIdx, allGroups) => {
+          {renderGroups.map((group, groupIdx, allGroups) => {
             if (group.kind === "circuit") {
               const circuitExercises = group.exIndices.map((idx) => session.sessionExercises[idx]);
               const circuitIndex = allGroups.slice(0, groupIdx + 1).filter((g) => g.kind === "circuit").length - 1;
@@ -425,9 +441,17 @@ export default function SessionScreen() {
                   onUpdateSet={session.updateSet}
                   onFillDown={session.fillDown}
                   onToggleDone={session.toggleDone}
+                  onSkipSet={session.skipSet}
                   onAddRound={() => group.exIndices.forEach((idx) => session.addSet(idx))}
                   onRemoveRound={(roundIdx) => group.exIndices.forEach((idx) => session.removeSet(idx, roundIdx))}
                   onReplaceExercise={openReplaceExercise}
+                  isReordering={isReordering}
+                  canMoveUp={groupIdx > 0}
+                  canMoveDown={groupIdx < allGroups.length - 1}
+                  onMoveUp={() => session.reorderGroup(groupIdx, "up")}
+                  onMoveDown={() => session.reorderGroup(groupIdx, "down")}
+                  onMoveExerciseUp={(liveExIdx) => session.reorderCircuitExercise(group.circuitId, liveExIdx, "up")}
+                  onMoveExerciseDown={(liveExIdx) => session.reorderCircuitExercise(group.circuitId, liveExIdx, "down")}
                 />
               );
             }
@@ -442,11 +466,17 @@ export default function SessionScreen() {
                 onUpdateSet={session.updateSet}
                 onFillDown={session.fillDown}
                 onToggleDone={session.toggleDone}
+                onSkipSet={session.skipSet}
                 onAddSet={session.addSet}
                 onRemoveSet={session.removeSet}
                 onRemoveExercise={session.removeExercise}
                 onReplaceExercise={openReplaceExercise}
                 onToggleMode={session.toggleExerciseMode}
+                isReordering={isReordering}
+                canMoveUp={groupIdx > 0}
+                canMoveDown={groupIdx < allGroups.length - 1}
+                onMoveUp={() => session.reorderGroup(groupIdx, "up")}
+                onMoveDown={() => session.reorderGroup(groupIdx, "down")}
               />
             );
           })}
@@ -476,6 +506,9 @@ export default function SessionScreen() {
         elapsed={session.elapsed}
         sessionNotes={sessionNotes}
         setSessionNotes={setSessionNotes}
+        showRpeInput={rpePrompt === "sesion"}
+        sessionRpe={sessionRpe}
+        setSessionRpe={setSessionRpe}
         saving={saving}
         colors={colors}
         onClose={() => setFinishModalVisible(false)}
@@ -497,6 +530,13 @@ export default function SessionScreen() {
         colors={colors}
         onConfirm={handleDiscardConfirm}
         onClose={() => setDiscardModalVisible(false)}
+      />
+
+      <RpePromptModal
+        visible={session.pendingRpe !== null}
+        colors={colors}
+        onSubmit={handleRpeSubmit}
+        onDismiss={session.clearPendingRpe}
       />
 
       <ExercisePicker

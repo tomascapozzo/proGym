@@ -1,3 +1,4 @@
+import { buildRenderGroups, type RenderGroup } from "@/lib/session-utils";
 import type { SessionExercise, SetEntry } from "@/types/session";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
@@ -29,10 +30,18 @@ export type SessionParams = {
   exercises?: string;
   dayIndex?: string;
   routineId?: string;
+  enrollmentId?: string;
   routineType?: string;
   completedDays?: string;
   totalDays?: string;
+  rpePrompt?: string;
 };
+
+export type PendingRpe = {
+  exIdx: number;
+  setIdx: number;
+  affectedExIndices: number[];
+} | null;
 
 type SessionContextType = {
   // State
@@ -49,6 +58,7 @@ type SessionContextType = {
   completedSets: number;
   totalSets: number;
   currentExerciseName: string;
+  pendingRpe: PendingRpe;
 
   // Session lifecycle
   startSession: (title: string, params: SessionParams, exercises: SessionExercise[]) => void;
@@ -65,6 +75,10 @@ type SessionContextType = {
   toggleDone: (exIdx: number, setIdx: number) => void;
   toggleExerciseMode: (exIdx: number) => void;
   setTrackingMode: React.Dispatch<React.SetStateAction<"simple" | "detailed">>;
+  reorderGroup: (groupIdx: number, direction: "up" | "down") => void;
+  reorderCircuitExercise: (circuitId: string, liveExIdx: number, direction: "up" | "down") => void;
+  skipSet: (exIdx: number, setIdx: number) => void;
+  clearPendingRpe: () => void;
 
   // Rest timer
   startRest: (seconds: number) => void;
@@ -95,11 +109,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [restRunning, setRestRunning] = useState(false);
   const [restVisible, setRestVisible] = useState(false);
 
+  const [pendingRpe, setPendingRpe] = useState<PendingRpe>(null);
+
   // Refs for timestamp-based timer math (survive renders without causing re-renders)
   const startTsRef = useRef<number | null>(null);
   const restExpiresAtRef = useRef<number | null>(null);
   const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const restIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Holds rest seconds while an RPE prompt is blocking the rest timer
+  const pendingRestRef = useRef<number | null>(null);
+  // Mirror of sessionParams for use inside stable callbacks
+  const sessionParamsRef = useRef<SessionParams>(EMPTY_PARAMS);
+
+  useEffect(() => { sessionParamsRef.current = sessionParams; }, [sessionParams]);
 
   // ── Timer recalc helpers ──────────────────────────────────────────────────
 
@@ -147,9 +169,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [restRunning, recalcRest]);
 
   // ── Persist exercises whenever they change during an active session ────────
+  const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (isActive) {
-      void AsyncStorage.setItem(KEYS.EXERCISES, JSON.stringify(sessionExercises));
+      if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
+      persistTimeoutRef.current = setTimeout(() => {
+        void AsyncStorage.setItem(KEYS.EXERCISES, JSON.stringify(sessionExercises));
+      }, 400);
     }
   }, [sessionExercises, isActive]);
 
@@ -272,13 +298,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const updated = [...prev];
       const currentSets = updated[exIdx].sets;
       const lastSet = currentSets[currentSets.length - 1];
-      const pReps = lastSet ? (lastSet.reps || lastSet.plannedReps) : undefined;
-      const pWeight = lastSet ? (lastSet.weight || lastSet.plannedWeight) : undefined;
       const newSet: SetEntry = {
-        reps: "",
-        weight: "",
-        ...(pReps ? { plannedReps: pReps } : {}),
-        ...(pWeight ? { plannedWeight: pWeight } : {}),
+        reps: lastSet ? (lastSet.reps || lastSet.plannedReps || "") : "",
+        weight: lastSet ? (lastSet.weight || lastSet.plannedWeight || "") : "",
         rpe: "",
         done: false,
       };
@@ -349,7 +371,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const sets = [...updated[exIdx].sets];
         let changed = false;
         for (let i = setIdx + 1; i < sets.length; i++) {
-          if (sets[i][field] === "") {
+          if (sets[i][field] === "" && (field !== "reps" || !sets[i].plannedReps)) {
             sets[i] = { ...sets[i], [field]: value };
             changed = true;
           }
@@ -372,11 +394,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         let { reps, weight, plannedReps, plannedWeight } = sets[setIdx];
         if (!wasAlreadyDone) {
           const lastDone = [...sets.slice(0, setIdx)].reverse().find((s) => s.done);
-          if (!reps) reps = lastDone?.reps || plannedReps || "";
+          if (!reps) reps = plannedReps || lastDone?.reps || "";
           if (!weight) weight = lastDone?.weight || plannedWeight || "";
         }
 
-        sets[setIdx] = { ...sets[setIdx], reps, weight, done: !sets[setIdx].done };
+        const newDone = !sets[setIdx].done;
+        sets[setIdx] = {
+          ...sets[setIdx],
+          reps,
+          weight,
+          done: newDone,
+          ...(wasAlreadyDone ? { skipped: false } : {}),
+        };
         updated[exIdx] = { ...updated[exIdx], sets };
 
         if (!wasAlreadyDone) {
@@ -386,7 +415,31 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             const circuitExercises = updated.filter((e) => e.circuitId === circuitId);
             shouldStartRest = circuitExercises.every((e) => e.sets[setIdx]?.done === true);
           }
-          if (shouldStartRest) {
+
+          const rpeMode = sessionParamsRef.current.rpePrompt ?? "sesion";
+          let showRpe = false;
+          let affectedExIndices: number[] = [exIdx];
+
+          if (rpeMode === "serie") {
+            // Prompt after every rest-triggering set (per individual exercise)
+            showRpe = shouldStartRest;
+          } else if (rpeMode === "bloque") {
+            // Prompt only when a full block/round completes; store on all circuit exercises
+            showRpe = shouldStartRest;
+            if (circuitId && shouldStartRest) {
+              affectedExIndices = updated
+                .map((e, i) => (!e.archived && e.circuitId === circuitId ? i : -1))
+                .filter((i) => i >= 0);
+            }
+          }
+
+          if (showRpe) {
+            const restSecs = prev[exIdx].restSeconds ?? 60;
+            setTimeout(() => {
+              setPendingRpe({ exIdx, setIdx, affectedExIndices });
+              pendingRestRef.current = restSecs;
+            }, 0);
+          } else if (shouldStartRest) {
             const restSecs = prev[exIdx].restSeconds ?? 60;
             setTimeout(() => {
               if (restIntervalRef.current) clearInterval(restIntervalRef.current);
@@ -415,6 +468,101 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       updated[exIdx] = { ...updated[exIdx], trackingMode: cycle[(idx + 1) % 3] };
       return updated;
     });
+  }, []);
+
+  const reorderGroup = useCallback((groupIdx: number, direction: "up" | "down") => {
+    setSessionExercises((prev) => {
+      const groups = buildRenderGroups(prev);
+      const targetIdx = direction === "up" ? groupIdx - 1 : groupIdx + 1;
+      if (targetIdx < 0 || targetIdx >= groups.length) return prev;
+
+      const sourceGroup = groups[groupIdx];
+      const targetGroup = groups[targetIdx];
+
+      const getBlockIndices = (group: RenderGroup): number[] => {
+        if (group.kind === "exercise") {
+          const result: number[] = [];
+          for (let i = group.exIdx - 1; i >= 0; i--) {
+            if (prev[i].archived && !prev[i].circuitId) result.unshift(i);
+            else break;
+          }
+          result.push(group.exIdx);
+          return result;
+        }
+        return prev.map((ex, i) => (ex.circuitId === group.circuitId ? i : -1)).filter((i) => i >= 0);
+      };
+
+      const sourceIndices = getBlockIndices(sourceGroup);
+      const targetIndices = getBlockIndices(targetGroup);
+      const sourceExercises = sourceIndices.map((i) => prev[i]);
+      const targetExercises = targetIndices.map((i) => prev[i]);
+
+      const allMovingSet = new Set([...sourceIndices, ...targetIndices]);
+      const rest = prev.map((ex, i) => ({ ex, i })).filter(({ i }) => !allMovingSet.has(i));
+
+      const firstIdx = Math.min(sourceIndices[0], targetIndices[0]);
+      const insertPoint = rest.findIndex(({ i }) => i > firstIdx);
+      const insertAt = insertPoint === -1 ? rest.length : insertPoint;
+
+      const [first, second] =
+        direction === "up" ? [sourceExercises, targetExercises] : [targetExercises, sourceExercises];
+
+      return [
+        ...rest.slice(0, insertAt).map(({ ex }) => ex),
+        ...first,
+        ...second,
+        ...rest.slice(insertAt).map(({ ex }) => ex),
+      ];
+    });
+  }, []);
+
+  const reorderCircuitExercise = useCallback(
+    (circuitId: string, liveExIdx: number, direction: "up" | "down") => {
+      setSessionExercises((prev) => {
+        const circuitLiveIndices = prev
+          .map((ex, i) => (!ex.archived && ex.circuitId === circuitId ? i : -1))
+          .filter((i) => i >= 0);
+
+        const posInCircuit = circuitLiveIndices.indexOf(liveExIdx);
+        if (posInCircuit < 0) return prev;
+
+        const targetPos = direction === "up" ? posInCircuit - 1 : posInCircuit + 1;
+        if (targetPos < 0 || targetPos >= circuitLiveIndices.length) return prev;
+
+        const updated = [...prev];
+        const idxA = circuitLiveIndices[posInCircuit];
+        const idxB = circuitLiveIndices[targetPos];
+        [updated[idxA], updated[idxB]] = [updated[idxB], updated[idxA]];
+        return updated;
+      });
+    },
+    [],
+  );
+
+  const skipSet = useCallback((exIdx: number, setIdx: number) => {
+    setSessionExercises((prev) => {
+      const updated = [...prev];
+      const sets = [...updated[exIdx].sets];
+      sets[setIdx] = { ...sets[setIdx], done: true, skipped: true };
+      updated[exIdx] = { ...updated[exIdx], sets };
+      return updated;
+    });
+  }, []);
+
+  // ── RPE prompt ────────────────────────────────────────────────────────────
+  const clearPendingRpe = useCallback(() => {
+    setPendingRpe(null);
+    if (pendingRestRef.current !== null) {
+      const secs = pendingRestRef.current;
+      pendingRestRef.current = null;
+      if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+      const expiresAt = Date.now() + secs * 1000;
+      restExpiresAtRef.current = expiresAt;
+      void AsyncStorage.setItem(KEYS.REST_EXPIRES_AT, String(expiresAt));
+      setRestRemaining(secs);
+      setRestRunning(true);
+      setRestVisible(true);
+    }
   }, []);
 
   // ── Rest timer actions ────────────────────────────────────────────────────
@@ -472,6 +620,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         completedSets,
         totalSets,
         currentExerciseName,
+        pendingRpe,
         startSession,
         clearSession,
         setSessionExercises,
@@ -484,6 +633,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         toggleDone,
         toggleExerciseMode,
         setTrackingMode,
+        reorderGroup,
+        reorderCircuitExercise,
+        skipSet,
+        clearPendingRpe,
         startRest,
         autoStartRest,
         skipRest,

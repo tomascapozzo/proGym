@@ -1,18 +1,24 @@
 import { useAuth } from "@/context/auth-context";
+import { useTheme } from "@/context/theme-context";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -33,9 +39,27 @@ export default function LoginScreen() {
     // navigation is handled by the root layout redirect
   };
 
+  const inputStyle = {
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    fontSize: 15,
+    marginBottom: 16,
+  };
+
+  const labelStyle = {
+    color: colors.textMuted,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  };
+
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#0A0F1A" }}
+      style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView
@@ -43,75 +67,55 @@ export default function LoginScreen() {
           flexGrow: 1,
           justifyContent: "center",
           padding: 24,
+          paddingTop: insets.top + 24,
+          paddingBottom: insets.bottom + 24,
         }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* LOGO / TITLE */}
-        <Text
-          style={{
-            color: "#3B82F6",
-            fontSize: 32,
-            fontWeight: "bold",
-            textAlign: "center",
-            letterSpacing: 1,
-            marginBottom: 4,
-          }}
-        >
-          proGym
-        </Text>
-        <Text
-          style={{
-            color: "#888",
-            textAlign: "center",
-            marginBottom: 40,
-          }}
-        >
-          Tu entrenador personal con IA
-        </Text>
+        {/* HEADER */}
+        <View style={{ alignItems: "center", marginBottom: 40 }}>
+          <Text
+            style={{
+              color: colors.accent,
+              fontSize: 34,
+              fontWeight: "800",
+              letterSpacing: -0.5,
+              marginBottom: 6,
+            }}
+          >
+            LEAD Rugby
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: 14 }}>
+            Tu entrenador personal con IA
+          </Text>
+        </View>
 
-        {/* FORM */}
-        <Text style={{ color: "#888", fontSize: 12, marginBottom: 6 }}>
-          EMAIL
-        </Text>
+        {/* EMAIL */}
+        <Text style={labelStyle}>EMAIL</Text>
         <TextInput
           value={email}
           onChangeText={setEmail}
           placeholder="tu@email.com"
-          placeholderTextColor="#555"
+          placeholderTextColor={colors.textDisabled}
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
-          style={{
-            backgroundColor: "#111827",
-            padding: 16,
-            borderRadius: 12,
-            color: "white",
-            marginBottom: 16,
-          }}
+          style={inputStyle}
         />
 
-        <Text style={{ color: "#888", fontSize: 12, marginBottom: 6 }}>
-          CONTRASEÑA
-        </Text>
+        {/* PASSWORD */}
+        <Text style={labelStyle}>CONTRASEÑA</Text>
         <TextInput
           value={password}
           onChangeText={setPassword}
           placeholder="••••••••"
-          placeholderTextColor="#555"
+          placeholderTextColor={colors.textDisabled}
           secureTextEntry
-          style={{
-            backgroundColor: "#111827",
-            padding: 16,
-            borderRadius: 12,
-            color: "white",
-            marginBottom: 24,
-          }}
+          style={[inputStyle, { marginBottom: 24 }]}
         />
 
         {error ? (
-          <Text
-            style={{ color: "#EF4444", textAlign: "center", marginBottom: 16 }}
-          >
+          <Text style={{ color: colors.error, textAlign: "center", marginBottom: 16, fontSize: 13 }}>
             {error}
           </Text>
         ) : null}
@@ -120,7 +124,7 @@ export default function LoginScreen() {
           onPress={handleLogin}
           disabled={loading}
           style={{
-            backgroundColor: "#2563EB",
+            backgroundColor: colors.accent,
             padding: 18,
             borderRadius: 14,
             alignItems: "center",
@@ -129,18 +133,18 @@ export default function LoginScreen() {
           }}
         >
           {loading ? (
-            <ActivityIndicator color="white" />
+            <ActivityIndicator color={colors.accentText} />
           ) : (
-            <Text style={{ color: "white", fontWeight: "600", fontSize: 16 }}>
+            <Text style={{ color: colors.accentText, fontWeight: "600", fontSize: 16 }}>
               Iniciar sesión
             </Text>
           )}
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => router.push("/(auth)/signup")}>
-          <Text style={{ color: "#888", textAlign: "center" }}>
+          <Text style={{ color: colors.textMuted, textAlign: "center", fontSize: 14 }}>
             ¿No tenés cuenta?{" "}
-            <Text style={{ color: "#3B82F6" }}>Registrate</Text>
+            <Text style={{ color: colors.accent, fontWeight: "600" }}>Registrate</Text>
           </Text>
         </TouchableOpacity>
       </ScrollView>

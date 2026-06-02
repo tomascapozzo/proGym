@@ -1,27 +1,32 @@
 import { useAuth } from "@/context/auth-context";
+import { useTheme } from "@/context/theme-context";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function SignupScreen() {
   const { signUp } = useAuth();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+
   const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSignup = async () => {
-    if (!name.trim() || !username.trim() || !email.trim() || !password.trim()) {
+    if (!name.trim() || !email.trim() || !password.trim()) {
       setError("Completá todos los campos.");
       return;
     }
@@ -31,12 +36,7 @@ export default function SignupScreen() {
     }
     setError("");
     setLoading(true);
-    const { error: err } = await signUp(
-      email.trim(),
-      password,
-      name.trim(),
-      username.trim(),
-    );
+    const { error: err } = await signUp(email.trim(), password, name.trim());
     setLoading(false);
     if (err) {
       setError(err);
@@ -44,9 +44,27 @@ export default function SignupScreen() {
     // navigation handled by root layout
   };
 
+  const inputStyle = {
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    fontSize: 15,
+    marginBottom: 16,
+  };
+
+  const labelStyle = {
+    color: colors.textMuted,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  };
+
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#0A0F1A" }}
+      style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView
@@ -54,109 +72,66 @@ export default function SignupScreen() {
           flexGrow: 1,
           justifyContent: "center",
           padding: 24,
+          paddingTop: insets.top + 24,
+          paddingBottom: insets.bottom + 24,
         }}
         keyboardShouldPersistTaps="handled"
       >
         {/* HEADER */}
-        <Text
-          style={{
-            color: "#3B82F6",
-            fontSize: 32,
-            fontWeight: "bold",
-            textAlign: "center",
-            letterSpacing: 1,
-            marginBottom: 4,
-          }}
-        >
-          proGym
-        </Text>
-        <Text style={{ color: "#888", textAlign: "center", marginBottom: 40 }}>
-          Creá tu cuenta y empezá hoy
-        </Text>
+        <View style={{ alignItems: "center", marginBottom: 40 }}>
+          <Text
+            style={{
+              color: colors.accent,
+              fontSize: 34,
+              fontWeight: "800",
+              letterSpacing: -0.5,
+              marginBottom: 6,
+            }}
+          >
+            LEAD Rugby
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: 14 }}>
+            Creá tu cuenta y empezá hoy
+          </Text>
+        </View>
 
         {/* NOMBRE */}
-        <Text style={{ color: "#888", fontSize: 12, marginBottom: 6 }}>
-          NOMBRE
-        </Text>
+        <Text style={labelStyle}>NOMBRE</Text>
         <TextInput
           value={name}
           onChangeText={setName}
           placeholder="Tu nombre"
-          placeholderTextColor="#555"
+          placeholderTextColor={colors.textDisabled}
           autoCapitalize="words"
-          style={{
-            backgroundColor: "#111827",
-            padding: 16,
-            borderRadius: 12,
-            color: "white",
-            marginBottom: 16,
-          }}
-        />
-
-        {/* USERNAME */}
-        <Text style={{ color: "#888", fontSize: 12, marginBottom: 6 }}>
-          USUARIO
-        </Text>
-        <TextInput
-          value={username}
-          onChangeText={setUsername}
-          placeholder="@usuario"
-          placeholderTextColor="#555"
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={{
-            backgroundColor: "#111827",
-            padding: 16,
-            borderRadius: 12,
-            color: "white",
-            marginBottom: 16,
-          }}
+          style={inputStyle}
         />
 
         {/* EMAIL */}
-        <Text style={{ color: "#888", fontSize: 12, marginBottom: 6 }}>
-          EMAIL
-        </Text>
+        <Text style={labelStyle}>EMAIL</Text>
         <TextInput
           value={email}
           onChangeText={setEmail}
           placeholder="tu@email.com"
-          placeholderTextColor="#555"
+          placeholderTextColor={colors.textDisabled}
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
-          style={{
-            backgroundColor: "#111827",
-            padding: 16,
-            borderRadius: 12,
-            color: "white",
-            marginBottom: 16,
-          }}
+          style={inputStyle}
         />
 
         {/* PASSWORD */}
-        <Text style={{ color: "#888", fontSize: 12, marginBottom: 6 }}>
-          CONTRASEÑA
-        </Text>
+        <Text style={labelStyle}>CONTRASEÑA</Text>
         <TextInput
           value={password}
           onChangeText={setPassword}
           placeholder="Mínimo 6 caracteres"
-          placeholderTextColor="#555"
+          placeholderTextColor={colors.textDisabled}
           secureTextEntry
-          style={{
-            backgroundColor: "#111827",
-            padding: 16,
-            borderRadius: 12,
-            color: "white",
-            marginBottom: 24,
-          }}
+          style={[inputStyle, { marginBottom: 24 }]}
         />
 
         {error ? (
-          <Text
-            style={{ color: "#EF4444", textAlign: "center", marginBottom: 16 }}
-          >
+          <Text style={{ color: colors.error, textAlign: "center", marginBottom: 16, fontSize: 13 }}>
             {error}
           </Text>
         ) : null}
@@ -165,7 +140,7 @@ export default function SignupScreen() {
           onPress={handleSignup}
           disabled={loading}
           style={{
-            backgroundColor: "#2563EB",
+            backgroundColor: colors.accent,
             padding: 18,
             borderRadius: 14,
             alignItems: "center",
@@ -174,18 +149,18 @@ export default function SignupScreen() {
           }}
         >
           {loading ? (
-            <ActivityIndicator color="white" />
+            <ActivityIndicator color={colors.accentText} />
           ) : (
-            <Text style={{ color: "white", fontWeight: "600", fontSize: 16 }}>
+            <Text style={{ color: colors.accentText, fontWeight: "600", fontSize: 16 }}>
               Crear cuenta
             </Text>
           )}
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: "#888", textAlign: "center" }}>
+          <Text style={{ color: colors.textMuted, textAlign: "center", fontSize: 14 }}>
             ¿Ya tenés cuenta?{" "}
-            <Text style={{ color: "#3B82F6" }}>Iniciá sesión</Text>
+            <Text style={{ color: colors.accent, fontWeight: "600" }}>Iniciá sesión</Text>
           </Text>
         </TouchableOpacity>
       </ScrollView>

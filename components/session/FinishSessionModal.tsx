@@ -18,6 +18,9 @@ type Props = {
   elapsed: number;
   sessionNotes: string;
   setSessionNotes: (v: string) => void;
+  showRpeInput?: boolean;
+  sessionRpe: number | null;
+  setSessionRpe: (v: number | null) => void;
   saving: boolean;
   colors: any;
   onClose: () => void;
@@ -30,6 +33,9 @@ export default function FinishSessionModal({
   elapsed,
   sessionNotes,
   setSessionNotes,
+  showRpeInput = false,
+  sessionRpe,
+  setSessionRpe,
   saving,
   colors,
   onClose,
@@ -103,6 +109,42 @@ export default function FinishSessionModal({
                   </Text>
                 </View>
               </View>
+
+              {/* RPE (sesion mode) */}
+              {showRpeInput && (
+                <View style={{ marginBottom: 20 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: 12, letterSpacing: 0.6, marginBottom: 8 }}>
+                    ESFUERZO PERCIBIDO (RPE)
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 6 }}>
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                      <TouchableOpacity
+                        key={n}
+                        onPress={() => setSessionRpe(sessionRpe === n ? null : n)}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 10,
+                          borderRadius: 10,
+                          backgroundColor: sessionRpe === n ? colors.accent : colors.surface,
+                          alignItems: "center",
+                          borderWidth: 1,
+                          borderColor: sessionRpe === n ? colors.accent : colors.border,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: sessionRpe === n ? colors.accentText : colors.text,
+                            fontSize: 13,
+                            fontWeight: "600",
+                          }}
+                        >
+                          {n}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
 
               {/* Notes */}
               <Text style={{ color: colors.textMuted, fontSize: 12, letterSpacing: 0.6, marginBottom: 8 }}>
