@@ -69,9 +69,8 @@ export default function OnboardingScreen() {
 
   const fetchAnamnesisForm = async (clubId: string) => {
     setLoadingQuestions(true);
-    console.log("[anamnesis] fetching form for club_id:", clubId);
 
-    const { data: form, error: formErr } = await supabase
+    const { data: form } = await supabase
       .from("club_forms")
       .select("*")
       .eq("club_id", clubId)
@@ -79,7 +78,6 @@ export default function OnboardingScreen() {
       .eq("status", "active")
       .limit(1)
       .maybeSingle();
-    console.log("[anamnesis] form:", form?.id ?? "not found", "err:", formErr?.message ?? "none");
 
     if (!form) {
       setLoadingQuestions(false);
@@ -88,12 +86,11 @@ export default function OnboardingScreen() {
 
     setAnamnesisForm(form as ClubForm);
 
-    const { data: qs, error: qsErr } = await supabase
+    const { data: qs } = await supabase
       .from("club_form_questions")
       .select("*")
       .eq("form_id", form.id)
       .order("order_index");
-    console.log("[anamnesis] questions:", qs?.length ?? 0, "err:", qsErr?.message ?? "none");
 
     setQuestions((qs as ClubFormQuestion[]) ?? []);
     setLoadingQuestions(false);
@@ -155,18 +152,12 @@ export default function OnboardingScreen() {
     setFormError("");
     setLoadingForm(true);
 
-    console.log("[anamnesis] handleContinue — user:", user.id);
-    console.log("[anamnesis] anamnesisForm:", anamnesisForm?.id ?? "null");
-    console.log("[anamnesis] questions count:", questions.length);
-    console.log("[anamnesis] answers:", JSON.stringify(answers));
-
     // Validate required questions
     const missing = questions.filter(
       (q) =>
         q.required &&
         (answers[q.id] === undefined || answers[q.id] === "" || answers[q.id] === null),
     );
-    console.log("[anamnesis] missing required:", missing.map((q) => q.question_text));
     if (missing.length > 0) {
       setFormError("Por favor completá todas las preguntas requeridas.");
       setLoadingForm(false);
@@ -175,14 +166,12 @@ export default function OnboardingScreen() {
 
     // Save answers to club_form_answers if a distribution exists
     if (anamnesisForm && questions.length > 0) {
-      console.log("[anamnesis] looking for distribution — form_id:", anamnesisForm.id, "user_id:", user.id);
-      const { data: dist, error: distErr } = await supabase
+      const { data: dist } = await supabase
         .from("club_form_distributions")
         .select("id")
         .eq("target_user_id", user.id)
         .eq("form_id", anamnesisForm.id)
         .maybeSingle();
-      console.log("[anamnesis] distribution:", dist?.id ?? "not found", "err:", distErr?.message ?? "none");
 
       if (dist) {
         const { data: response, error: respErr } = await supabase
@@ -198,7 +187,6 @@ export default function OnboardingScreen() {
           )
           .select("id")
           .single();
-        console.log("[anamnesis] response upsert:", response?.id ?? "null", "err:", respErr?.message ?? "none");
 
         if (!respErr && response) {
           const answerRows = questions.map((q) => {
@@ -220,20 +208,17 @@ export default function OnboardingScreen() {
                   : null,
             };
           });
-          const { error: answersErr } = await supabase
+          await supabase
             .from("club_form_answers")
             .upsert(answerRows, { onConflict: "response_id,question_id" });
-          console.log("[anamnesis] answers upsert err:", answersErr?.message ?? "none");
         }
       }
     }
 
-    console.log("[anamnesis] updating profile: onboarding_completed=true");
     const { error: profileErr } = await supabase
       .from("profiles")
       .update({ onboarding_completed: true })
       .eq("id", user.id);
-    console.log("[anamnesis] profile update err:", profileErr?.message ?? "none", "code:", profileErr?.code ?? "—");
 
     setLoadingForm(false);
 
