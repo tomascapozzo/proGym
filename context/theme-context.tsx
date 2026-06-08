@@ -33,7 +33,7 @@ export interface ThemeColors {
     weekly: string;
     monthly: string;
     skipped: string; // amber — used for skipped-day states across all routine types
-    done: string;    // green — used for completed-day states
+    done: string;    // gold — used for completed-day states
   };
   // Per-circuit accent colors — cycle through these when multiple circuits appear
   circuitPalette: Array<{ bg: string; text: string }>;
@@ -42,10 +42,10 @@ export interface ThemeColors {
 // Routine type colors are fixed identity colors — intentionally the same in both themes
 const ROUTINE_COLORS: ThemeColors["routineColors"] = {
   daily: "#0EA5E9",
-  weekly: "#6EE7B7",
+  weekly: "#F97316",
   monthly: "#A78BFA",
   skipped: "#F59E0B",
-  done: "#4ADE80",
+  done: "#D4A853",
 };
 
 const dark: ThemeColors = {
