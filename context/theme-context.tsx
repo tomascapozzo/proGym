@@ -76,26 +76,26 @@ const dark: ThemeColors = {
 };
 
 const light: ThemeColors = {
-  bg: "#F8FAFC",
+  bg: "#FEFDFB",
   card: "#FFFFFF",
-  surface: "#EDF2F7",
-  border: "#CBD5E1",
-  text: "#0F172A",
-  textMuted: "#64748B",
-  textDisabled: "#94A3B8",
-  accent: "#059669",
-  accentText: "#FFFFFF",
-  accentBg: "#D1FAE5",
-  accentBgAlt: "#ECFDF5",
-  inputBg: "#F1F5F9",
+  surface: "#F8F3EA",
+  border: "#E5D9C0",
+  text: "#1A1208",
+  textMuted: "#7A6848",
+  textDisabled: "#C0AF8A",
+  accent: "#D4A853",
+  accentText: "#1A1208",
+  accentBg: "#FDF4E3",
+  accentBgAlt: "#FEF9F0",
+  inputBg: "#F5F0E7",
   tabBg: "#FFFFFF",
-  tabBorder: "#E2E8F0",
+  tabBorder: "#E5D9C0",
   error: "#EF4444",
   blue: "#2563EB",
-  setRowBg: "#F1F5F9",
+  setRowBg: "#F5F0E7",
   routineColors: ROUTINE_COLORS,
   circuitPalette: [
-    { bg: "#D1FAE5", text: "#059669" }, // green
+    { bg: "#FDF4E3", text: "#C9962A" }, // gold
     { bg: "#DBEAFE", text: "#2563EB" }, // blue
     { bg: "#EDE9FE", text: "#7C3AED" }, // purple
     { bg: "#FEF3C7", text: "#D97706" }, // amber
