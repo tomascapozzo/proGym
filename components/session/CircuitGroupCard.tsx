@@ -23,6 +23,8 @@ type Props = {
   onMoveDown?: () => void;
   onMoveExerciseUp?: (liveExIdx: number) => void;
   onMoveExerciseDown?: (liveExIdx: number) => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 };
 
 function CircuitGroupCard({
@@ -46,6 +48,8 @@ function CircuitGroupCard({
   onMoveDown,
   onMoveExerciseUp,
   onMoveExerciseDown,
+  collapsed,
+  onToggleCollapse,
 }: Props) {
   const rondas = exercises[0]?.sets.length ?? 0;
   const circuitColor = colors.circuitPalette[circuitIndex % colors.circuitPalette.length];
@@ -72,6 +76,52 @@ function CircuitGroupCard({
       return next;
     });
   };
+
+  if (collapsed && !isReordering) {
+    const completedRounds = Array.from({ length: rondas }, (_, i) =>
+      exercises.every((ex) => ex.sets[i]?.done || ex.sets[i]?.skipped),
+    ).filter(Boolean).length;
+
+    return (
+      <TouchableOpacity
+        onPress={onToggleCollapse}
+        activeOpacity={0.8}
+        style={{
+          backgroundColor: colors.card,
+          borderRadius: 14,
+          paddingVertical: 12,
+          paddingHorizontal: 16,
+          marginBottom: 14,
+          borderWidth: 1,
+          borderColor: circuitColor.text,
+          borderLeftWidth: 3,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: circuitColor.bg,
+            borderRadius: 6,
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+          }}
+        >
+          <Text style={{ color: circuitColor.text, fontSize: 10, fontWeight: "700", letterSpacing: 0.5 }}>
+            CIRCUITO
+          </Text>
+        </View>
+        <Text style={{ flex: 1, color: colors.text, fontWeight: "700", fontSize: 14 }} numberOfLines={1}>
+          {circuitName}
+        </Text>
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+          {completedRounds}/{rondas} series
+        </Text>
+        <Text style={{ color: colors.textMuted, fontSize: 10, marginLeft: 4 }}>▼</Text>
+      </TouchableOpacity>
+    );
+  }
 
   if (isReordering) {
     return (
@@ -245,6 +295,14 @@ function CircuitGroupCard({
             {rondas} serie{rondas !== 1 ? "s" : ""}
           </Text>
         </View>
+        {onToggleCollapse && (
+          <TouchableOpacity
+            onPress={onToggleCollapse}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={{ color: colors.textMuted, fontSize: 10 }}>▲</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Rounds */}
@@ -550,6 +608,7 @@ export default memo(CircuitGroupCard, (prev, next) => {
     prev.colors === next.colors &&
     prev.isReordering === next.isReordering &&
     prev.canMoveUp === next.canMoveUp &&
-    prev.canMoveDown === next.canMoveDown
+    prev.canMoveDown === next.canMoveDown &&
+    prev.collapsed === next.collapsed
   );
 });

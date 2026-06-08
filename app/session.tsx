@@ -375,6 +375,31 @@ export default function SessionScreen() {
     [session.sessionExercises],
   );
 
+  const currentCircuitId = useMemo(() => {
+    for (const group of renderGroups) {
+      if (group.kind !== "circuit") continue;
+      const hasUndone = group.exIndices.some((idx) =>
+        session.sessionExercises[idx]?.sets.some((s) => !s.done && !s.skipped),
+      );
+      if (hasUndone) return group.circuitId;
+    }
+    return null;
+  }, [renderGroups, session.sessionExercises]);
+
+  const [manuallyExpanded, setManuallyExpanded] = useState<Set<string>>(new Set());
+
+  const isCircuitCollapsed = (circuitId: string) =>
+    circuitId !== currentCircuitId && !manuallyExpanded.has(circuitId);
+
+  const toggleCircuit = (circuitId: string) => {
+    setManuallyExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(circuitId)) next.delete(circuitId);
+      else next.add(circuitId);
+      return next;
+    });
+  };
+
   const alreadyAddedIds = session.sessionExercises
     .map((e) => e.exercise_id)
     .filter(Boolean) as string[];
@@ -452,6 +477,8 @@ export default function SessionScreen() {
                   onMoveDown={() => session.reorderGroup(groupIdx, "down")}
                   onMoveExerciseUp={(liveExIdx) => session.reorderCircuitExercise(group.circuitId, liveExIdx, "up")}
                   onMoveExerciseDown={(liveExIdx) => session.reorderCircuitExercise(group.circuitId, liveExIdx, "down")}
+                  collapsed={isCircuitCollapsed(group.circuitId)}
+                  onToggleCollapse={() => toggleCircuit(group.circuitId)}
                 />
               );
             }

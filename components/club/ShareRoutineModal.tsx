@@ -63,21 +63,68 @@ export default function ShareRoutineModal({ visible, onClose, userId, clubId, gr
     setSharing(true);
     setError(null);
 
-    const { error: insertError } = await supabase.from("routine_shares").insert({
-      routine_id: selectedRoutine.id,
-      shared_by: userId,
-      club_id: clubId,
-      target_type: "group",
-      target_group_id: selectedGroup.id,
-    });
-
-    setSharing(false);
+    const { data: share, error: insertError } = await supabase
+      .from("routine_shares")
+      .insert({
+        routine_id: selectedRoutine.id,
+        shared_by: userId,
+        club_id: clubId,
+        target_type: "group",
+        target_group_id: selectedGroup.id,
+      })
+      .select("id")
+      .single();
 
     if (insertError) {
+      setSharing(false);
       setError("No se pudo compartir la rutina. Intenta de nuevo.");
       return;
     }
 
+    // Fetch active players in the group and enroll them immediately,
+    // archiving any existing active club enrollment first.
+    const { data: groupMembers } = await supabase
+      .from("club_group_members")
+      .select("user_id")
+      .eq("group_id", selectedGroup.id);
+
+    const groupMemberIds = (groupMembers ?? []).map((m: { user_id: string }) => m.user_id);
+
+    if (groupMemberIds.length > 0) {
+      const { data: activePlayers } = await supabase
+        .from("club_members")
+        .select("user_id")
+        .eq("club_id", clubId)
+        .eq("role", "player")
+        .eq("status", "active")
+        .in("user_id", groupMemberIds);
+
+      const playerIds = (activePlayers ?? []).map((m: { user_id: string }) => m.user_id);
+
+      if (playerIds.length > 0) {
+        // Archive any currently active club-assigned enrollment for these players
+        await supabase
+          .from("routine_enrollments")
+          .update({ status: "past" })
+          .in("user_id", playerIds)
+          .not("source_share_id", "is", null)
+          .eq("status", "active");
+
+        // Enroll in the new routine
+        await supabase.from("routine_enrollments").upsert(
+          playerIds.map((pid: string) => ({
+            routine_id: selectedRoutine.id,
+            user_id: pid,
+            status: "active",
+            progress: { completed_days: [] },
+            source_share_id: share.id,
+          })),
+          { onConflict: "routine_id,user_id" },
+        );
+      }
+    }
+
+    setSharing(false);
     onClose();
   };
 

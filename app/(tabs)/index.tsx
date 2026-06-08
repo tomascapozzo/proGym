@@ -1,13 +1,11 @@
 import { useAuth } from "@/context/auth-context";
 import { useTheme } from "@/context/theme-context";
 import { useClub } from "@/hooks/useClub";
-import { useSharedRoutines } from "@/hooks/useSharedRoutines";
 import { supabase } from "@/lib/supabase";
-import { getNextDay, type Routine, type RoutineDay } from "@/types/routine";
 import type { PendingDistribution } from "@/types/forms";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -15,31 +13,42 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
-// ─── Motivational quotes ─────────────────────────────────────────────────────
-const QUOTES = [
-  "No cuentes los días, haz que los días cuenten.",
-  "El cuerpo logra lo que la mente cree.",
-  "La disciplina es el puente entre metas y logros.",
-  "El dolor que sientes hoy será la fuerza que sentirás mañana.",
-  "No se trata de ser mejor que los demás, sino de ser mejor que ayer.",
-  "Cada entrenamiento es un paso más hacia tu mejor versión.",
-  "La fuerza no viene de lo que puedes hacer, sino de superar lo que creías que no podías.",
-  "Tu único competidor eres tú de ayer.",
-  "Haz hoy lo que tu yo de mañana te agradecerá.",
-];
-
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
   const { user, profile } = useAuth();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { membership: clubMembership } = useClub(user?.id);
-  const { syncSharedRoutines } = useSharedRoutines();
-  const [routine, setRoutine] = useState<Routine | null>(null);
-  const [loadingRoutine, setLoadingRoutine] = useState(true);
-  const [pendingForms, setPendingForms] = useState<PendingDistribution[]>([]);
 
-  const quote = useMemo(() => QUOTES[new Date().getDate() % QUOTES.length], []);
+  type SessionLog = {
+    id: string;
+    created_at: string;
+    duration_seconds: number | null;
+    routine_day_name: string | null;
+    exercises: { exercise_name: string; sets: { reps: number; weight: number }[] }[];
+  };
+
+  const [loading, setLoading] = useState(true);
+
+  const [pendingForms, setPendingForms] = useState<PendingDistribution[]>([]);
+  const [weekSessions, setWeekSessions] = useState<number>(0);
+  const [weekVolume, setWeekVolume] = useState<number>(0);
+  const [weekDurationSec, setWeekDurationSec] = useState<number>(0);
+  const [streak, setStreak] = useState<number>(0);
+  // Last week review
+  const [lastWeekSessions, setLastWeekSessions] = useState<number>(0);
+  const [lastWeekVolume, setLastWeekVolume] = useState<number>(0);
+  const [lastWeekDurationSec, setLastWeekDurationSec] = useState<number>(0);
+  // Two weeks ago (for comparison)
+  const [twoWeeksAgoSessions, setTwoWeeksAgoSessions] = useState<number>(0);
+  const [twoWeeksAgoVolume, setTwoWeeksAgoVolume] = useState<number>(0);
+  const [nextMatch, setNextMatch] = useState<{
+    title: string;
+    starts_at: string;
+    opponent: string | null;
+    location: string | null;
+  } | null | undefined>(undefined);
 
   useFocusEffect(
     useCallback(() => {
@@ -48,71 +57,147 @@ export default function HomeScreen() {
   );
 
   const fetchData = async () => {
-    setLoadingRoutine(true);
-    await syncSharedRoutines();
+    setLoading(true);
 
-    // Prefer personal active routines; fall back to club-shared if none exist
-    let { data } = await supabase
-      .from("routine_enrollments")
-      .select("id, status, progress, source_share_id, enrolled_at, routine:routines!routine_id(id, data, type, created_at)")
-      .eq("user_id", user!.id)
-      .eq("status", "active")
-      .is("source_share_id", null)
-      .order("enrolled_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Date anchors
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diff);
+    monday.setHours(0, 0, 0, 0);
 
-    if (!data) {
-      ({ data } = await supabase
-        .from("routine_enrollments")
-        .select("id, status, progress, source_share_id, enrolled_at, routine:routines!routine_id(id, data, type, created_at)")
+    const lastMonday = new Date(monday);
+    lastMonday.setDate(monday.getDate() - 7);
+
+    const twoWeeksAgo = new Date(monday);
+    twoWeeksAgo.setDate(monday.getDate() - 14);
+
+    // 13 weeks back — enough for streak history
+    const thirteenWeeksAgo = new Date(monday);
+    thirteenWeeksAgo.setDate(monday.getDate() - 13 * 7);
+
+    const [logsRes, formsRes, routineRes, matchRes] = await Promise.all([
+      supabase
+        .from("workout_logs")
+        .select("id, created_at, duration_seconds, routine_day_name, exercises")
         .eq("user_id", user!.id)
-        .eq("status", "active")
-        .not("source_share_id", "is", null)
+        .gte("created_at", thirteenWeeksAgo.toISOString())
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("club_form_distributions")
+        .select(
+          "id, form_id, due_at, form:club_forms!form_id(id, title, status, template_type), responses:club_form_responses!distribution_id(submitted_at)",
+        )
+        .eq("target_type", "player")
+        .eq("target_user_id", user!.id),
+      // NOTE: clean_cycles is omitted until migration 031 is applied.
+      // The streak uses completed_days.length only until then; add
+      // "clean_cycles" back to the select once the migration runs.
+      supabase
+        .from("routine_enrollments")
+        .select("id, status, progress, enrolled_at, source_share_id, routine:routines!routine_id(data)")
+        .eq("user_id", user!.id)
         .order("enrolled_at", { ascending: false })
+        .limit(30),
+      supabase
+        .from("club_events")
+        .select("title, starts_at, opponent, location")
+        .eq("type", "partido")
+        .gte("starts_at", new Date().toISOString())
+        .order("starts_at", { ascending: true })
         .limit(1)
-        .maybeSingle());
+        .maybeSingle(),
+    ]);
+
+    const logs = (logsRes.data ?? []) as SessionLog[];
+    const weekLogs = logs.filter((l) => new Date(l.created_at) >= monday);
+    const lastWeekLogs = logs.filter((l) => {
+      const d = new Date(l.created_at);
+      return d >= lastMonday && d < monday;
+    });
+    const twoWeeksAgoLogs = logs.filter((l) => {
+      const d = new Date(l.created_at);
+      return d >= twoWeeksAgo && d < lastMonday;
+    });
+
+    const computeVolume = (sessionLogs: SessionLog[]) =>
+      sessionLogs.reduce(
+        (total, l) =>
+          total +
+          (l.exercises ?? []).reduce(
+            (exT, ex) =>
+              exT +
+              (ex.sets ?? []).reduce(
+                (sT, s) => sT + (s.reps ?? 0) * (s.weight ?? 0),
+                0,
+              ),
+            0,
+          ),
+        0,
+      );
+
+    // This week
+    setWeekSessions(weekLogs.length);
+    setWeekVolume(computeVolume(weekLogs));
+    setWeekDurationSec(
+      weekLogs.reduce((acc, l) => acc + (l.duration_seconds ?? 0), 0),
+    );
+
+    // Last week
+    setLastWeekSessions(lastWeekLogs.length);
+    setLastWeekVolume(computeVolume(lastWeekLogs));
+    setLastWeekDurationSec(
+      lastWeekLogs.reduce((acc, l) => acc + (l.duration_seconds ?? 0), 0),
+    );
+
+    // Two weeks ago (for comparison)
+    setTwoWeeksAgoSessions(twoWeeksAgoLogs.length);
+    setTwoWeeksAgoVolume(computeVolume(twoWeeksAgoLogs));
+
+    // Streak: sessions completed since the last dirty enrollment, across ALL clean enrollments.
+    //
+    // "dirty" = any enrollment with explicit skipped_days.
+    // Enrollments are ordered newest → oldest. The most recent dirty enrollment
+    // marks the break point — everything enrolled before it is excluded.
+    // Concurrent dirty enrollments (enrolled after the break point) are skipped
+    // but don't stop the count, so a skip in routine A doesn't cancel sessions
+    // in a concurrent clean routine B.
+    //
+    // Formula per clean enrollment: clean_cycles * total_days + completed_days.length
+    type EnrollmentRow = {
+      id: string;
+      status: string;
+      progress: { completed_days: number[]; skipped_days?: number[] };
+      clean_cycles: number;
+      enrolled_at: string;
+      routine: { data: { dias: unknown[] } } | null;
+    };
+    const enrollments = (routineRes.data ?? []) as unknown as EnrollmentRow[];
+
+    // Find the break point: most recent enrollment with skips (newest-first order)
+    const dirtyIdx = enrollments.findIndex(
+      (e) => (e.progress?.skipped_days?.length ?? 0) > 0,
+    );
+    const breakBeforeDate = dirtyIdx >= 0 ? enrollments[dirtyIdx].enrolled_at : null;
+
+    let streakCount = 0;
+    for (const e of enrollments) {
+      // Exclude everything enrolled at or before the break point
+      if (breakBeforeDate && e.enrolled_at <= breakBeforeDate) break;
+      // Concurrent dirty enrollment — skip it but keep counting others
+      if ((e.progress?.skipped_days?.length ?? 0) > 0) continue;
+      const cleanCycles = e.clean_cycles ?? 0;
+      const totalDays = e.routine?.data?.dias?.length ?? 1;
+      const completed = e.progress?.completed_days?.length ?? 0;
+      streakCount += cleanCycles * totalDays + completed;
     }
+    setStreak(streakCount);
 
-    if (data) {
-      type EnrollmentRow = {
-        id: string;
-        status: string;
-        progress: { completed_days: number[]; skipped_days?: number[] };
-        source_share_id: string | null;
-        enrolled_at: string;
-        routine: { id: string; data: { nombre: string; dias: any[] }; type: string; created_at: string } | null;
-      };
-      const e = data as unknown as EnrollmentRow;
-      if (e.routine) {
-        setRoutine({
-          id: e.routine.id,
-          enrollment_id: e.id,
-          type: e.routine.type as Routine["type"],
-          status: e.status as Routine["status"],
-          progress: e.progress,
-          data: e.routine.data as Routine["data"],
-          created_at: e.routine.created_at,
-          source_share_id: e.source_share_id,
-        });
-      } else {
-        setRoutine(null);
-      }
-    } else {
-      setRoutine(null);
-    }
-    setLoadingRoutine(false);
+    setNextMatch(matchRes.data ?? null);
 
-    // Pending wellness forms
-    const { data: rawDist } = await supabase
-      .from("club_form_distributions")
-      .select(
-        "id, form_id, due_at, form:club_forms!form_id(id, title, status, template_type), responses:club_form_responses!distribution_id(submitted_at)",
-      )
-      .eq("target_type", "player")
-      .eq("target_user_id", user!.id);
-
-    const pending = ((rawDist ?? []) as any[]).filter(
+    const rawDist = formsRes.data ?? [];
+    const pending = (rawDist as any[]).filter(
       (d) =>
         d.form?.template_type === "wellness" &&
         d.form?.status === "active" &&
@@ -120,59 +205,48 @@ export default function HomeScreen() {
           (d.responses as any[])[0]?.submitted_at === null),
     );
     setPendingForms(pending as PendingDistribution[]);
+
+    setLoading(false);
   };
 
-  const nextDay = useMemo(() => {
-    if (!routine) return null;
-    return getNextDay(routine);
-  }, [routine]);
+  const firstName = profile?.name ?? "atleta";
 
-  const startSession = () => {
-    if (!nextDay || !routine) return;
-    router.push({
-      pathname: "/session",
-      params: {
-        type: "routine",
-        dayData: JSON.stringify(nextDay.day),
-        dayIndex: String(nextDay.index),
-        routineId: routine.id,
-        enrollmentId: routine.enrollment_id,
-        routineType: routine.type,
-        completedDays: JSON.stringify(routine.progress?.completed_days ?? []),
-        totalDays: String(routine.data.dias.length),
-      },
-    });
-  };
-
-  const firstName = profile?.name?.split(" ")[0] ?? "atleta";
-  const completedCount = routine?.progress?.completed_days?.length ?? 0;
-  const totalDays = routine?.data?.dias?.length ?? 1;
-  const completionPct = Math.round((completedCount / totalDays) * 100);
-  const accentColor = nextDay?.isSkippedFallback
-    ? colors.routineColors.skipped
-    : colors.accent;
-
-  // Exercise count for the upcoming day
-  const exerciseCount = nextDay
-    ? (nextDay.day.ejercicios?.length ?? 0) +
-      (nextDay.day.circuitos?.reduce(
-        (sum, c) => sum + (c.ejercicios?.length ?? 0),
-        0,
-      ) ?? 0)
-    : 0;
-
-  // PR data — show up to 3 tracked exercises that have a recorded 1RM
   const prExercises = profile?.pr_exercises ?? [];
   const oneRm = profile?.one_rm ?? {};
   const topPrs = prExercises.filter((ex) => oneRm[ex] != null).slice(0, 3);
 
+  const formatRelative = (iso: string) => {
+    const d = new Date(iso);
+    const diffDays = Math.floor((Date.now() - d.getTime()) / 86400000);
+    if (diffDays === 0) return "Hoy";
+    if (diffDays === 1) return "Ayer";
+    if (diffDays < 7) return `Hace ${diffDays} días`;
+    return d.toLocaleDateString("es-AR", { day: "numeric", month: "short" });
+  };
+
+  const formatVolume = (kg: number) => {
+    if (kg === 0) return "—";
+    if (kg >= 1000) return `${(kg / 1000).toFixed(1)}t`;
+    return `${Math.round(kg)}`;
+  };
+
+  const formatDuration = (sec: number) => {
+    if (sec === 0) return null;
+    const m = Math.round(sec / 60);
+    if (m < 60) return `${m} min`;
+    return `${Math.floor(m / 60)}h ${m % 60}m`;
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 48 }}>
-
+      <ScrollView
+        contentContainerStyle={{
+          paddingTop: insets.top + 20,
+          paddingBottom: insets.bottom + 40,
+        }}
+      >
         {/* ── HEADER ── */}
-        <View style={{ paddingHorizontal: 20, paddingTop: 56, paddingBottom: 24 }}>
-          {/* Nav row */}
+        <View style={{ paddingHorizontal: 20, marginBottom: 28 }}>
           <View
             style={{
               flexDirection: "row",
@@ -181,68 +255,137 @@ export default function HomeScreen() {
               marginBottom: 24,
             }}
           >
-            <View
+            <TouchableOpacity
+              onPress={() => router.push("/(tabs)/profile")}
+              activeOpacity={0.75}
               style={{
-                width: 38,
-                height: 38,
-                borderRadius: 11,
-                backgroundColor: colors.accent + "18",
-                alignItems: "center",
-                justifyContent: "center",
+                width: 38, height: 38, borderRadius: 19,
+                backgroundColor: colors.accent + "25",
+                alignItems: "center", justifyContent: "center",
               }}
             >
-              <Ionicons name="fitness-outline" size={20} color={colors.accent} />
-            </View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <View
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 19,
-                  backgroundColor: colors.card,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="notifications-outline" size={18} color={colors.textMuted} />
-              </View>
-              <View
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 19,
-                  backgroundColor: colors.accent + "25",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text style={{ color: colors.accent, fontWeight: "700", fontSize: 15 }}>
-                  {firstName[0]?.toUpperCase()}
-                </Text>
-              </View>
-            </View>
+              <Text style={{ color: colors.accent, fontWeight: "700", fontSize: 15 }}>
+                {firstName[0]?.toUpperCase()}
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Greeting */}
           <Text style={{ color: colors.textMuted, fontSize: 15, marginBottom: 2 }}>
             Bienvenido,
           </Text>
           <Text
             style={{
-              color: colors.accent,
-              fontSize: 40,
-              fontWeight: "800",
+              color: colors.accent, fontSize: 40, fontWeight: "800",
               letterSpacing: -1,
-              marginBottom: 8,
             }}
           >
             {firstName}
           </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-            {quote}
-          </Text>
+
+          {/* ── PRÓXIMO PARTIDO / FECHA LIBRE ── */}
+          {clubMembership !== null && nextMatch !== undefined && (
+            <View style={{ marginTop: 16 }}>
+              {nextMatch ? (
+                <View
+                  style={{
+                    backgroundColor: colors.card,
+                    borderRadius: 16,
+                    padding: 16,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontSize: 10,
+                      fontWeight: "700",
+                      letterSpacing: 1,
+                      marginBottom: 8,
+                    }}
+                  >
+                    PRÓXIMO PARTIDO
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontSize: 20,
+                      fontWeight: "800",
+                      letterSpacing: -0.5,
+                      marginBottom: 8,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {nextMatch.opponent ? `vs. ${nextMatch.opponent}` : nextMatch.title}
+                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <View
+                      style={{
+                        backgroundColor: colors.surface,
+                        borderRadius: 8,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 5,
+                      }}
+                    >
+                      <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
+                      <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                        {new Date(nextMatch.starts_at).toLocaleDateString("es-AR", {
+                          weekday: "short",
+                          day: "numeric",
+                          month: "short",
+                        })}
+                      </Text>
+                    </View>
+                    {nextMatch.location && (
+                      <View
+                        style={{
+                          backgroundColor: colors.accent + "18",
+                          borderRadius: 8,
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "600" }}>
+                          {nextMatch.location === "local" ? "Local" : "Visitante"}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              ) : (
+                <View
+                  style={{
+                    backgroundColor: colors.accentBg,
+                    borderRadius: 16,
+                    padding: 16,
+                    borderWidth: 1,
+                    borderColor: colors.accent + "30",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontSize: 10,
+                      fontWeight: "700",
+                      letterSpacing: 1,
+                      marginBottom: 6,
+                    }}
+                  >
+                    ESTA SEMANA
+                  </Text>
+                  <Text style={{ color: colors.accent, fontWeight: "700", fontSize: 18 }}>
+                    Fecha libre
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 2 }}>
+                    Sin partido. Aprovecha para sumar entrenamientos.
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
         </View>
 
         {/* ── NO CLUB BANNER ── */}
@@ -251,26 +394,18 @@ export default function HomeScreen() {
             onPress={() => router.push("/(tabs)/club")}
             activeOpacity={0.85}
             style={{
-              marginHorizontal: 20,
-              marginBottom: 20,
+              marginHorizontal: 20, marginBottom: 20,
               backgroundColor: colors.accent + "12",
-              borderRadius: 16,
-              borderWidth: 1,
+              borderRadius: 16, borderWidth: 1,
               borderColor: colors.accent + "35",
-              padding: 16,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
+              padding: 16, flexDirection: "row", alignItems: "center", gap: 12,
             }}
           >
             <View
               style={{
-                width: 38,
-                height: 38,
-                borderRadius: 10,
+                width: 38, height: 38, borderRadius: 10,
                 backgroundColor: colors.accent + "20",
-                alignItems: "center",
-                justifyContent: "center",
+                alignItems: "center", justifyContent: "center",
               }}
             >
               <Ionicons name="people-outline" size={20} color={colors.accent} />
@@ -280,195 +415,234 @@ export default function HomeScreen() {
                 Unite a tu club
               </Text>
               <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 1 }}>
-                Ingresa el codigo que te dio tu coach
+                Ingresa el código que te dio tu coach
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.accent} />
           </TouchableOpacity>
         )}
 
-        {/* ── TODAY'S WORKOUT ── */}
+        {/* ── STATS ── */}
         <View style={{ paddingHorizontal: 20, marginBottom: 28 }}>
-          {loadingRoutine ? (
+          {loading ? (
             <ActivityIndicator color={colors.accent} style={{ alignSelf: "flex-start" }} />
-          ) : !routine ? (
-            <View
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 20,
-                padding: 20,
-                borderWidth: 1,
-                borderColor: colors.border,
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: colors.textMuted, textAlign: "center", lineHeight: 22 }}>
-                No tenés una rutina activa.{"\n"}
-                <Text
-                  style={{ color: colors.accent }}
-                  onPress={() => router.push("/(tabs)/train")}
-                >
-                  Creá una en Entrenar
-                </Text>{" "}
-                para empezar.
-              </Text>
-            </View>
-          ) : nextDay ? (
-            <TouchableOpacity
-              onPress={startSession}
-              activeOpacity={0.88}
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 20,
-                padding: 20,
-                borderWidth: 1,
-                borderColor: accentColor + "40",
-              }}
-            >
-              {/* Top row: icon + label + percentage */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  marginBottom: 14,
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                  <View
-                    style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: 11,
-                      backgroundColor: accentColor + "20",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Ionicons name="flash" size={19} color={accentColor} />
-                  </View>
-                  <View>
-                    {nextDay.isSkippedFallback && (
-                      <Text
-                        style={{
-                          color: colors.routineColors.skipped,
-                          fontSize: 9,
-                          fontWeight: "700",
-                          letterSpacing: 0.8,
-                          marginBottom: 2,
-                        }}
-                      >
-                        DÍA SALTADO
-                      </Text>
-                    )}
-                    <Text style={{ color: colors.text, fontSize: 16, fontWeight: "700" }}>
-                      {completedCount > 0 ? "Continuar día" : "Empezar día"}
-                    </Text>
-                  </View>
-                </View>
+          ) : (
+            <>
+              {/* Weekly summary row */}
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
 
-                {totalDays > 1 && (
-                  <View style={{ alignItems: "flex-end" }}>
+                {/* Sessions + week-over-week delta */}
+                <View
+                  style={{
+                    flex: 1, backgroundColor: colors.card, borderRadius: 14,
+                    padding: 14, borderWidth: 1, borderColor: colors.border,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6 }}>
                     <Text
                       style={{
-                        color: accentColor,
-                        fontSize: 24,
-                        fontWeight: "800",
-                        lineHeight: 28,
+                        color: colors.accent, fontSize: 28, fontWeight: "800",
+                        letterSpacing: -1, lineHeight: 32,
                       }}
                     >
-                      {completionPct}%
+                      {weekSessions}
                     </Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 10 }}>completado</Text>
+                    {(() => {
+                      const delta = weekSessions - lastWeekSessions;
+                      if (delta === 0 || lastWeekSessions === 0) return null;
+                      const up = delta > 0;
+                      return (
+                        <Text
+                          style={{
+                            fontSize: 11, fontWeight: "700", marginBottom: 4,
+                            color: up ? colors.green ?? "#4CAF50" : colors.error ?? "#E53935",
+                          }}
+                        >
+                          {up ? "↑" : "↓"}{Math.abs(delta)}
+                        </Text>
+                      );
+                    })()}
                   </View>
-                )}
+                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 3 }}>
+                    sesiones esta semana
+                  </Text>
+                  {lastWeekSessions > 0 && (
+                    <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 1, opacity: 0.6 }}>
+                      {lastWeekSessions} la semana pasada
+                    </Text>
+                  )}
+                </View>
+
+                {/* Volume */}
+                <View
+                  style={{
+                    flex: 1, backgroundColor: colors.card, borderRadius: 14,
+                    padding: 14, borderWidth: 1, borderColor: colors.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.text, fontSize: weekVolume >= 1000 ? 22 : 28,
+                      fontWeight: "800", letterSpacing: -1, lineHeight: 32,
+                    }}
+                  >
+                    {formatVolume(weekVolume)}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 3 }}>
+                    {weekVolume >= 1000 ? "toneladas esta sem." : "kg levantados"}
+                  </Text>
+                </View>
+
+                {/* Streak */}
+                <View
+                  style={{
+                    flex: 1, backgroundColor: colors.card, borderRadius: 14,
+                    padding: 14, borderWidth: 1,
+                    borderColor: streak > 0 ? (colors.accent + "40") : colors.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 28, fontWeight: "800", letterSpacing: -1, lineHeight: 32,
+                      color: streak > 0 ? colors.accent : colors.textMuted,
+                    }}
+                  >
+                    {streak}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 3 }}>
+                    racha activa
+                  </Text>
+                </View>
               </View>
 
-              {/* Focus label */}
-              <Text
-                style={{
-                  color: accentColor,
-                  fontSize: 15,
-                  fontWeight: "600",
-                  marginBottom: 4,
-                }}
-              >
-                {nextDay.day.enfoque}
-                {nextDay.day.dia ? ` • ${nextDay.day.dia}` : ""}
-              </Text>
+              {/* Past week review */}
+              {lastWeekSessions === 0 ? (
+                /* No sessions last week — friendly nudge */
+                <View
+                  style={{
+                    backgroundColor: colors.card, borderRadius: 16,
+                    borderWidth: 1, borderColor: colors.border,
+                    padding: 18, gap: 8,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.textMuted, fontSize: 10,
+                      fontWeight: "700", letterSpacing: 0.8,
+                    }}
+                  >
+                    SEMANA PASADA
+                  </Text>
+                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: "700" }}>
+                    No registraste sesiones
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 19 }}>
+                    ¿Tuviste algún inconveniente? Si necesitás ajustar la rutina, comentáselo a tu coach.
+                  </Text>
+                </View>
+              ) : (
+                /* Sessions exist — show review */
+                <View
+                  style={{
+                    backgroundColor: colors.card, borderRadius: 16,
+                    borderWidth: 1, borderColor: colors.border,
+                    overflow: "hidden",
+                  }}
+                >
+                  {/* Header */}
+                  <View
+                    style={{
+                      paddingHorizontal: 16, paddingVertical: 12,
+                      borderBottomWidth: 1, borderBottomColor: colors.border,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.textMuted, fontSize: 10,
+                        fontWeight: "700", letterSpacing: 0.8,
+                      }}
+                    >
+                      SEMANA PASADA
+                    </Text>
+                  </View>
 
-              {/* Subtitle */}
-              <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: 16 }}>
-                {totalDays > 1
-                  ? `${completedCount} de ${totalDays} días completados`
-                  : exerciseCount > 0
-                  ? `${exerciseCount} ejercicio${exerciseCount !== 1 ? "s" : ""}`
-                  : "Listo para entrenar"}
-              </Text>
+                  {/* Stats rows */}
+                  <View style={{ padding: 16, gap: 10 }}>
+                    {/* Sessions */}
+                    {(() => {
+                      const delta = lastWeekSessions - twoWeeksAgoSessions;
+                      const up = delta > 0;
+                      return (
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                          <Text style={{ color: colors.textMuted, fontSize: 13 }}>Sesiones</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            {twoWeeksAgoSessions > 0 && delta !== 0 && (
+                              <Text style={{
+                                fontSize: 11, fontWeight: "700",
+                                color: up ? colors.green ?? "#4CAF50" : colors.error ?? "#E53935",
+                              }}>
+                                {up ? "↑" : "↓"}{Math.abs(delta)} vs anterior
+                              </Text>
+                            )}
+                            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "700", minWidth: 24, textAlign: "right" }}>
+                              {lastWeekSessions}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })()}
 
-              {/* Progress segments */}
-              {totalDays > 1 && (
-                <View style={{ flexDirection: "row", gap: 4 }}>
-                  {Array.from({ length: totalDays }, (_, i) => {
-                    const doneList = routine.progress?.completed_days ?? [];
-                    const skipList = routine.progress?.skipped_days ?? [];
-                    const isDone = doneList.includes(i);
-                    const isSkippedDay = skipList.includes(i);
-                    const isNext = i === nextDay.index;
-                    return (
-                      <View
-                        key={i}
-                        style={{
-                          flex: 1,
-                          height: 6,
-                          borderRadius: 3,
-                          backgroundColor: isDone
-                            ? accentColor
-                            : isSkippedDay
-                            ? colors.textMuted + "30"
-                            : isNext
-                            ? accentColor + "45"
-                            : colors.border,
-                        }}
-                      />
-                    );
-                  })}
+                    {/* Volume */}
+                    {lastWeekVolume > 0 && (() => {
+                      const delta = lastWeekVolume - twoWeeksAgoVolume;
+                      const up = delta > 0;
+                      const pct = twoWeeksAgoVolume > 0
+                        ? Math.round(Math.abs(delta) / twoWeeksAgoVolume * 100)
+                        : 0;
+                      return (
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                          <Text style={{ color: colors.textMuted, fontSize: 13 }}>Volumen</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            {twoWeeksAgoVolume > 0 && pct > 0 && (
+                              <Text style={{
+                                fontSize: 11, fontWeight: "700",
+                                color: up ? colors.green ?? "#4CAF50" : colors.error ?? "#E53935",
+                              }}>
+                                {up ? "↑" : "↓"}{pct}% vs anterior
+                              </Text>
+                            )}
+                            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "700" }}>
+                              {formatVolume(lastWeekVolume)} kg
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })()}
+
+                    {/* Duration */}
+                    {lastWeekDurationSec > 0 && (
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                        <Text style={{ color: colors.textMuted, fontSize: 13 }}>Tiempo total</Text>
+                        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "700" }}>
+                          {formatDuration(lastWeekDurationSec)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
               )}
-            </TouchableOpacity>
-          ) : (
-            // All days done
-            <View
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 20,
-                padding: 20,
-                borderWidth: 1,
-                borderColor: colors.border,
-                gap: 10,
-              }}
-            >
-              <Text style={{ color: colors.text, fontWeight: "700", fontSize: 16 }}>
-                {routine.type === "daily" ? "Sesión completada" : "Semana completada"}
-              </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 20 }}>
-                {routine.type === "daily"
-                  ? "Creá una nueva rutina cuando estés listo."
-                  : "Podés reiniciar la rutina desde la pestaña Entrenar."}
-              </Text>
-              <TouchableOpacity onPress={() => router.push("/(tabs)/train")}>
-                <Text style={{ color: colors.accent, fontWeight: "600", fontSize: 13 }}>
-                  Ir a Entrenar
-                </Text>
-              </TouchableOpacity>
-            </View>
+            </>
           )}
         </View>
 
         {/* ── FORMULARIOS PENDIENTES ── */}
         {pendingForms.length > 0 && (
           <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
-            <Text style={{ color: colors.text, fontSize: 16, fontWeight: "700", marginBottom: 12 }}>
+            <Text
+              style={{
+                color: colors.text, fontSize: 16, fontWeight: "700", marginBottom: 12,
+              }}
+            >
               Formularios pendientes
             </Text>
             {pendingForms.map((dist) => (
@@ -479,25 +653,16 @@ export default function HomeScreen() {
                 }
                 activeOpacity={0.85}
                 style={{
-                  backgroundColor: colors.card,
-                  borderRadius: 16,
-                  padding: 16,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 14,
-                  marginBottom: 10,
+                  backgroundColor: colors.card, borderRadius: 16,
+                  padding: 16, borderWidth: 1, borderColor: colors.border,
+                  flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 10,
                 }}
               >
                 <View
                   style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 12,
+                    width: 42, height: 42, borderRadius: 12,
                     backgroundColor: colors.surface,
-                    alignItems: "center",
-                    justifyContent: "center",
+                    alignItems: "center", justifyContent: "center",
                   }}
                 >
                   <Ionicons name="document-text-outline" size={20} color={colors.textMuted} />
@@ -523,10 +688,8 @@ export default function HomeScreen() {
           <View style={{ paddingHorizontal: 20, marginBottom: 28 }}>
             <View
               style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 14,
+                flexDirection: "row", justifyContent: "space-between",
+                alignItems: "center", marginBottom: 14,
               }}
             >
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -551,60 +714,42 @@ export default function HomeScreen() {
                 <View
                   key={ex}
                   style={{
-                    backgroundColor: colors.card,
-                    borderRadius: 14,
-                    padding: 14,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 14,
+                    backgroundColor: colors.card, borderRadius: 14,
+                    padding: 14, borderWidth: 1, borderColor: colors.border,
+                    flexDirection: "row", alignItems: "center", gap: 14,
                   }}
                 >
                   <View
                     style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 10,
+                      width: 48, height: 48, borderRadius: 10,
                       backgroundColor: colors.surface,
-                      alignItems: "center",
-                      justifyContent: "center",
+                      alignItems: "center", justifyContent: "center",
                     }}
                   >
                     <Ionicons name="barbell-outline" size={22} color={colors.textMuted} />
                   </View>
-
                   <Text
                     style={{
-                      flex: 1,
-                      color: colors.text,
-                      fontWeight: "600",
-                      fontSize: 15,
+                      flex: 1, color: colors.text,
+                      fontWeight: "600", fontSize: 15,
                     }}
                     numberOfLines={1}
                   >
                     {ex}
                   </Text>
-
                   <Text
                     style={{
-                      color: colors.text,
-                      fontWeight: "700",
-                      fontSize: 15,
-                      marginRight: 8,
+                      color: colors.text, fontWeight: "700",
+                      fontSize: 15, marginRight: 8,
                     }}
                   >
                     {oneRm[ex]} kg
                   </Text>
-
                   <View
                     style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
+                      width: 32, height: 32, borderRadius: 8,
                       backgroundColor: colors.accent + "18",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      alignItems: "center", justifyContent: "center",
                     }}
                   >
                     <Ionicons name="trending-up" size={16} color={colors.accent} />
@@ -614,47 +759,6 @@ export default function HomeScreen() {
             </View>
           </View>
         )}
-
-        {/* ── CREAR TU RUTINA ── */}
-        <View style={{ paddingHorizontal: 20, marginBottom: 14 }}>
-          <TouchableOpacity
-            onPress={() => router.push("/(tabs)/train")}
-            activeOpacity={0.85}
-            style={{
-              backgroundColor: colors.card,
-              borderRadius: 16,
-              padding: 18,
-              borderWidth: 1,
-              borderColor: colors.border,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 14,
-            }}
-          >
-            <View
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 12,
-                backgroundColor: colors.surface,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="clipboard-outline" size={20} color={colors.textMuted} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontWeight: "700", fontSize: 15 }}>
-                Crear tu rutina
-              </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
-                Diseña tu plan personalizado
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-
       </ScrollView>
     </View>
   );

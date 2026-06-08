@@ -24,6 +24,8 @@ export type ClubFormQuestion = {
   options: ScaleOptions | string[] | OneRmOptions | null;
   required: boolean;
   order_index: number;
+  depends_on_question_id: string | null;
+  depends_on_answer: 'si' | 'no' | null;
 };
 
 export type ClubForm = {

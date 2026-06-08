@@ -8,33 +8,36 @@ import { useTheme } from "@/context/theme-context";
 import { useRoutineCreator } from "@/hooks/useRoutineCreator";
 import { useSharedRoutines } from "@/hooks/useSharedRoutines";
 import { supabase } from "@/lib/supabase";
-import { getNextDay, ROUTINE_TYPE_LABELS, type Routine, type RoutineDay } from "@/types/routine";
+import {
+  getNextDay,
+  ROUTINE_TYPE_LABELS,
+  type Routine,
+  type RoutineDay,
+} from "@/types/routine";
+import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-
-// ─── Component ────────────────────────────────────────────────────────────────
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TrainScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loadingRoutines, setLoadingRoutines] = useState(true);
   const [showPast, setShowPast] = useState(false);
 
-  // Full routine detail sheet
   const [detailRoutine, setDetailRoutine] = useState<Routine | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Routine | null>(null);
 
-  // Session start flow
   const [previewDay, setPreviewDay] = useState<RoutineDay | null>(null);
   const [previewDayIndex, setPreviewDayIndex] = useState(0);
   const [previewRoutine, setPreviewRoutine] = useState<Routine | null>(null);
@@ -47,12 +50,17 @@ export default function TrainScreen() {
     }, [user]),
   );
 
+  const { syncSharedRoutines } = useSharedRoutines();
+  const routineCreator = useRoutineCreator(fetchRoutines);
+
   const fetchRoutines = async () => {
     setLoadingRoutines(true);
     await syncSharedRoutines();
     const { data } = await supabase
       .from("routine_enrollments")
-      .select("id, status, progress, source_share_id, enrolled_at, routine:routines!routine_id(id, data, type, created_at)")
+      .select(
+        "id, status, progress, source_share_id, enrolled_at, routine:routines!routine_id(id, data, type, created_at)",
+      )
       .eq("user_id", user!.id)
       .order("enrolled_at", { ascending: false });
 
@@ -62,7 +70,12 @@ export default function TrainScreen() {
       progress: { completed_days: number[]; skipped_days?: number[] };
       source_share_id: string | null;
       enrolled_at: string;
-      routine: { id: string; data: { nombre: string; dias: any[] }; type: string; created_at: string } | null;
+      routine: {
+        id: string;
+        data: { nombre: string; dias: any[] };
+        type: string;
+        created_at: string;
+      } | null;
     };
 
     const mapped: Routine[] = ((data ?? []) as unknown as EnrollmentRow[])
@@ -82,28 +95,34 @@ export default function TrainScreen() {
     setLoadingRoutines(false);
   };
 
-  const { syncSharedRoutines } = useSharedRoutines();
-  const routineCreator = useRoutineCreator(fetchRoutines);
+  // ─── Routine grouping ──────────────────────────────────────────────────────
 
-  // ─── Group routines ───────────────────────────────────────────────────────
+  const activePersonal = routines.filter(
+    (r) => !r.source_share_id && r.status === "active",
+  );
+  const pendingPersonal = routines.filter(
+    (r) => !r.source_share_id && r.status === "pending_restart",
+  );
+  const pastPersonal = routines.filter(
+    (r) => !r.source_share_id && r.status === "past",
+  );
+  const activeClub = routines.filter(
+    (r) => !!r.source_share_id && r.status === "active",
+  );
+  const pendingClub = routines.filter(
+    (r) => !!r.source_share_id && r.status === "pending_restart",
+  );
 
-  const personalRoutines = routines.filter((r) => !r.source_share_id);
-  const clubCopies = routines.filter((r) => !!r.source_share_id);
+  // Primary: personal active first, then club active, then pending
+  const primaryRoutine =
+    activePersonal[0] ??
+    activeClub[0] ??
+    pendingPersonal[0] ??
+    pendingClub[0] ??
+    null;
+  const isClubRoutine = !!primaryRoutine?.source_share_id;
 
-  const activeRoutines = personalRoutines.filter((r) => r.status === "active");
-  const pendingRoutines = personalRoutines.filter((r) => r.status === "pending_restart");
-  const pastRoutines = personalRoutines.filter((r) => r.status === "past");
-
-  const activeClubRoutines = clubCopies.filter((r) => r.status === "active");
-  const pendingClubRoutines = clubCopies.filter((r) => r.status === "pending_restart");
-
-  // Show club routines in the active section only when no personal routines exist
-  const noPersonalActive = activeRoutines.length === 0 && pendingRoutines.length === 0;
-  const showingClubFallback = noPersonalActive && (activeClubRoutines.length > 0 || pendingClubRoutines.length > 0);
-  const displayActiveRoutines = showingClubFallback ? activeClubRoutines : activeRoutines;
-  const displayPendingRoutines = showingClubFallback ? pendingClubRoutines : pendingRoutines;
-
-  // ─── Session start actions ────────────────────────────────────────────────
+  // ─── Session actions ───────────────────────────────────────────────────────
 
   const startDay = (routine: Routine, day: RoutineDay, dayIndex: number) => {
     setPreviewRoutine(routine);
@@ -126,12 +145,16 @@ export default function TrainScreen() {
         routineId: previewRoutine.id,
         enrollmentId: previewRoutine.enrollment_id,
         routineType: previewRoutine.type,
-        completedDays: JSON.stringify(previewRoutine.progress?.completed_days ?? []),
+        completedDays: JSON.stringify(
+          previewRoutine.progress?.completed_days ?? [],
+        ),
         totalDays: String(previewRoutine.data.dias.length),
         rpePrompt: previewRoutine.data.rpe_prompt ?? "sesion",
       },
     });
   };
+
+  // ─── Mutations ─────────────────────────────────────────────────────────────
 
   const restartRoutine = async (routine: Routine) => {
     await supabase
@@ -154,10 +177,11 @@ export default function TrainScreen() {
   const confirmDeleteRoutine = async () => {
     if (!deleteTarget) return;
     if (deleteTarget.source_share_id) {
-      // Club-assigned: remove enrollment only (coach's routine stays intact)
-      await supabase.from("routine_enrollments").delete().eq("id", deleteTarget.enrollment_id);
+      await supabase
+        .from("routine_enrollments")
+        .delete()
+        .eq("id", deleteTarget.enrollment_id);
     } else {
-      // Personal: delete the routine (enrollment cascades via ON DELETE CASCADE)
       await supabase.from("routines").delete().eq("id", deleteTarget.id);
     }
     if (detailRoutine?.id === deleteTarget.id) setDetailRoutine(null);
@@ -169,341 +193,528 @@ export default function TrainScreen() {
     const skipped = routine.progress?.skipped_days ?? [];
     if (skipped.includes(dayIndex)) return;
     const newProgress = { ...routine.progress, skipped_days: [...skipped, dayIndex] };
-    await supabase.from("routine_enrollments").update({ progress: newProgress }).eq("id", routine.enrollment_id);
-    if (detailRoutine?.id === routine.id) setDetailRoutine({ ...routine, progress: newProgress });
+    await supabase
+      .from("routine_enrollments")
+      .update({ progress: newProgress })
+      .eq("id", routine.enrollment_id);
+    if (detailRoutine?.id === routine.id)
+      setDetailRoutine({ ...routine, progress: newProgress });
     fetchRoutines();
   };
 
   const unskipDay = async (routine: Routine, dayIndex: number) => {
     const skipped = routine.progress?.skipped_days ?? [];
-    const newProgress = { ...routine.progress, skipped_days: skipped.filter((i) => i !== dayIndex) };
-    await supabase.from("routine_enrollments").update({ progress: newProgress }).eq("id", routine.enrollment_id);
-    if (detailRoutine?.id === routine.id) setDetailRoutine({ ...routine, progress: newProgress });
+    const newProgress = {
+      ...routine.progress,
+      skipped_days: skipped.filter((i) => i !== dayIndex),
+    };
+    await supabase
+      .from("routine_enrollments")
+      .update({ progress: newProgress })
+      .eq("id", routine.enrollment_id);
+    if (detailRoutine?.id === routine.id)
+      setDetailRoutine({ ...routine, progress: newProgress });
     fetchRoutines();
   };
 
-  // ─── Render helpers ───────────────────────────────────────────────────────
+  // ─── Hero card ─────────────────────────────────────────────────────────────
 
-  const renderActiveRoutine = (routine: Routine, isClub = false) => {
-    const next = getNextDay(routine);
-    if (!next) return null;
-    const completed = routine.progress?.completed_days ?? [];
-    const total = routine.data.dias.length;
-    const typeColor = colors.routineColors[routine.type];
+  const renderHero = () => {
+    if (loadingRoutines) {
+      return (
+        <View style={{ alignItems: "center", paddingVertical: 60 }}>
+          <ActivityIndicator color={colors.accent} size="large" />
+        </View>
+      );
+    }
+
+    if (!primaryRoutine) {
+      return (
+        <View
+          style={{
+            backgroundColor: colors.card,
+            borderRadius: 20,
+            padding: 28,
+            borderWidth: 1,
+            borderColor: colors.border,
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <Ionicons name="barbell-outline" size={36} color={colors.textMuted} />
+          <Text
+            style={{
+              color: colors.text,
+              fontWeight: "700",
+              fontSize: 16,
+              textAlign: "center",
+            }}
+          >
+            Sin rutina activa
+          </Text>
+          <Text
+            style={{
+              color: colors.textMuted,
+              fontSize: 13,
+              textAlign: "center",
+              lineHeight: 20,
+            }}
+          >
+            Tu coach aún no asignó una rutina.{"\n"}Podés crear la tuya abajo.
+          </Text>
+        </View>
+      );
+    }
+
+    const next = getNextDay(primaryRoutine);
+    const completed = primaryRoutine.progress?.completed_days ?? [];
+    const total = primaryRoutine.data.dias.length;
+    const typeColor = colors.routineColors[primaryRoutine.type];
+    const isPending = primaryRoutine.status === "pending_restart";
+    const allDone = !isPending && !next;
 
     return (
-      <TouchableOpacity
-        key={routine.id}
-        onPress={() => setDetailRoutine(routine)}
-        activeOpacity={0.85}
+      <View
         style={{
           backgroundColor: colors.card,
-          borderRadius: 16,
-          padding: 16,
-          marginBottom: 12,
+          borderRadius: 20,
           borderWidth: 1,
           borderColor: colors.border,
+          overflow: "hidden",
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12, gap: 8 }}>
+        {/* Club badge */}
+        {isClubRoutine && (
           <View
             style={{
-              backgroundColor: typeColor + "22",
-              borderRadius: 6,
-              paddingHorizontal: 8,
-              paddingVertical: 3,
+              backgroundColor: colors.blue + "18",
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.blue + "30",
             }}
           >
-            <Text style={{ color: typeColor, fontSize: 10, fontWeight: "700", letterSpacing: 1 }}>
-              {ROUTINE_TYPE_LABELS[routine.type]}
+            <Ionicons name="people" size={13} color={colors.blue} />
+            <Text
+              style={{
+                color: colors.blue,
+                fontSize: 11,
+                fontWeight: "700",
+                letterSpacing: 0.5,
+              }}
+            >
+              RUTINA DE TU CLUB
             </Text>
           </View>
-          <Text style={{ color: colors.text, fontWeight: "700", fontSize: 15, flex: 1 }}>
-            {routine.data.nombre}
-          </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-            {completed.length}/{total}
-          </Text>
-        </View>
+        )}
 
-        <Pressable
-          onPress={(e) => { e.stopPropagation?.(); startDay(routine, next.day, next.index); }}
-          style={({ pressed }) => ({
-            backgroundColor: pressed ? typeColor + "22" : colors.surface ?? colors.bg,
-            borderRadius: 12,
-            padding: 14,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            borderWidth: 1,
-            borderColor: next.isSkippedFallback ? colors.routineColors.skipped + "44" : typeColor + "44",
-          })}
-        >
-          <View>
-            <Text style={{ color: colors.textMuted, fontSize: 10, marginBottom: 2 }}>
-              {next.isSkippedFallback ? "DÍA PENDIENTE" : "SIGUIENTE DÍA"}
-            </Text>
-            <Text style={{ color: colors.text, fontWeight: "600", fontSize: 15 }}>
-              {next.day.dia}
-            </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
-              {[
-                next.day.enfoque,
-                next.day.ejercicios.length > 0 ? `${next.day.ejercicios.length} ejercicios` : null,
-                (next.day.circuitos ?? []).length > 0
-                  ? `${(next.day.circuitos ?? []).length} circuito${(next.day.circuitos ?? []).length !== 1 ? "s" : ""}`
-                  : null,
-              ].filter(Boolean).join(" · ")}
-            </Text>
-          </View>
+        <View style={{ padding: 20 }}>
+          {/* Type badge + name */}
           <View
             style={{
-              backgroundColor: next.isSkippedFallback ? colors.routineColors.skipped : typeColor,
-              borderRadius: 20,
-              width: 36,
-              height: 36,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 6,
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: typeColor + "22",
+                borderRadius: 6,
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+              }}
+            >
+              <Text
+                style={{
+                  color: typeColor,
+                  fontSize: 10,
+                  fontWeight: "700",
+                  letterSpacing: 1,
+                }}
+              >
+                {ROUTINE_TYPE_LABELS[primaryRoutine.type]}
+              </Text>
+            </View>
+          </View>
+
+          <Text
+            style={{
+              color: colors.text,
+              fontSize: 22,
+              fontWeight: "800",
+              letterSpacing: -0.5,
+              marginBottom: 16,
+            }}
+          >
+            {primaryRoutine.data.nombre}
+          </Text>
+
+          {/* Progress bar */}
+          {total > 1 && (
+            <View style={{ marginBottom: 16 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  marginBottom: 6,
+                }}
+              >
+                <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                  Progreso
+                </Text>
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontSize: 11,
+                    fontWeight: "600",
+                  }}
+                >
+                  {completed.length}/{total} días
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: 4 }}>
+                {Array.from({ length: total }, (_, i) => {
+                  const doneList = primaryRoutine.progress?.completed_days ?? [];
+                  const skipList = primaryRoutine.progress?.skipped_days ?? [];
+                  const isDone = doneList.includes(i);
+                  const isSkipped = skipList.includes(i);
+                  const isNext = next && i === next.index;
+                  return (
+                    <View
+                      key={i}
+                      style={{
+                        flex: 1,
+                        height: 5,
+                        borderRadius: 3,
+                        backgroundColor: isDone
+                          ? typeColor
+                          : isSkipped
+                          ? colors.textMuted + "30"
+                          : isNext
+                          ? typeColor + "45"
+                          : colors.border,
+                      }}
+                    />
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* State: pending restart */}
+          {isPending ? (
+            <View
+              style={{
+                backgroundColor: colors.surface,
+                borderRadius: 14,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: colors.border,
+                marginBottom: 16,
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.text,
+                  fontWeight: "700",
+                  fontSize: 15,
+                  textAlign: "center",
+                }}
+              >
+                Semana completada
+              </Text>
+              <Text
+                style={{
+                  color: colors.textMuted,
+                  fontSize: 13,
+                  textAlign: "center",
+                }}
+              >
+                ¡Buen trabajo! Reiniciá cuando estés listo.
+              </Text>
+              <TouchableOpacity
+                onPress={() => restartRoutine(primaryRoutine)}
+                style={{
+                  backgroundColor: typeColor + "20",
+                  borderRadius: 10,
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
+                  marginTop: 4,
+                }}
+              >
+                <Text
+                  style={{ color: typeColor, fontWeight: "700", fontSize: 14 }}
+                >
+                  Reiniciar rutina
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+          /* State: all days done */
+          ) : allDone ? (
+            <View
+              style={{
+                backgroundColor: colors.surface,
+                borderRadius: 14,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: colors.border,
+                marginBottom: 16,
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <Text
+                style={{ color: colors.text, fontWeight: "700", fontSize: 15 }}
+              >
+                Rutina completada
+              </Text>
+              <Text
+                style={{
+                  color: colors.textMuted,
+                  fontSize: 13,
+                  textAlign: "center",
+                }}
+              >
+                Completaste todos los días.
+              </Text>
+            </View>
+
+          /* State: next day ready */
+          ) : next ? (
+            <>
+              <View
+                style={{
+                  backgroundColor: colors.surface,
+                  borderRadius: 14,
+                  padding: 16,
+                  borderWidth: 1,
+                  borderColor: next.isSkippedFallback
+                    ? colors.routineColors.skipped + "44"
+                    : typeColor + "33",
+                  marginBottom: 16,
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontSize: 10,
+                    fontWeight: "700",
+                    letterSpacing: 0.8,
+                    marginBottom: 4,
+                  }}
+                >
+                  {next.isSkippedFallback ? "DÍA PENDIENTE" : "SIGUIENTE"}
+                </Text>
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontWeight: "700",
+                    fontSize: 17,
+                    marginBottom: 2,
+                  }}
+                >
+                  {next.day.dia || next.day.enfoque}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                  {[
+                    next.day.enfoque !== next.day.dia ? next.day.enfoque : null,
+                    next.day.ejercicios?.length > 0
+                      ? `${next.day.ejercicios.length} ejercicio${next.day.ejercicios.length !== 1 ? "s" : ""}`
+                      : null,
+                    (next.day.circuitos ?? []).length > 0
+                      ? `${next.day.circuitos.length} circuito${next.day.circuitos.length !== 1 ? "s" : ""}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => startDay(primaryRoutine, next.day, next.index)}
+                activeOpacity={0.85}
+                style={{
+                  backgroundColor: typeColor,
+                  borderRadius: 14,
+                  paddingVertical: 16,
+                  alignItems: "center",
+                  marginBottom: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    color: "#fff",
+                    fontWeight: "800",
+                    fontSize: 16,
+                    letterSpacing: 0.3,
+                  }}
+                >
+                  Empezar entrenamiento
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
+
+          {/* Detail link */}
+          <TouchableOpacity
+            onPress={() => setDetailRoutine(primaryRoutine)}
+            style={{
+              flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
+              gap: 4,
+              paddingVertical: 4,
             }}
           >
-            <Text style={{ color: "#000", fontSize: 14, fontWeight: "700" }}>▶</Text>
-          </View>
-        </Pressable>
-
-        <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 8 }}>
-          {routine.type !== "daily" && !next.isSkippedFallback && (
-            <TouchableOpacity
-              onPress={() => skipDay(routine, next.index)}
-              style={{ padding: 4 }}
+            <Text
+              style={{
+                color: colors.textMuted,
+                fontSize: 13,
+                fontWeight: "600",
+              }}
             >
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Saltar este día →</Text>
-            </TouchableOpacity>
-          )}
-          <View style={{ flex: 1 }} />
-          {!isClub && (
-            <TouchableOpacity
-              onPress={() => deleteRoutine(routine)}
-              style={{ padding: 4 }}
-            >
-              <Text style={{ color: colors.error, fontSize: 12 }}>Eliminar rutina</Text>
-            </TouchableOpacity>
-          )}
+              Ver detalle completo
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+          </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+      </View>
     );
   };
 
-  const renderPendingRoutine = (routine: Routine) => (
-    <View
-      key={routine.id}
-      style={{
-        backgroundColor: colors.card,
-        borderRadius: 16,
-        padding: 16,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: colors.border,
-      }}
-    >
-      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4, gap: 8 }}>
-        <View
-          style={{
-            backgroundColor: colors.routineColors.done + "22",
-            borderRadius: 6,
-            paddingHorizontal: 8,
-            paddingVertical: 3,
-          }}
-        >
-          <Text style={{ color: colors.routineColors.done, fontSize: 10, fontWeight: "700", letterSpacing: 1 }}>
-            SEMANA COMPLETA
-          </Text>
-        </View>
-      </View>
-      <Text style={{ color: colors.text, fontWeight: "700", fontSize: 15, marginBottom: 12 }}>
-        {routine.data.nombre}
-      </Text>
-      <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: 14 }}>
-        Completaste todos los días. ¿Qué querés hacer?
-      </Text>
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <TouchableOpacity
-          onPress={() => restartRoutine(routine)}
-          style={{
-            flex: 1,
-            backgroundColor: colors.accentBg,
-            borderRadius: 10,
-            padding: 12,
-            alignItems: "center",
-            borderWidth: 1,
-            borderColor: colors.accent,
-          }}
-        >
-          <Text style={{ color: colors.accent, fontWeight: "700", fontSize: 13 }}>
-            Reiniciar
-          </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
-            Próxima semana
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => archiveRoutine(routine)}
-          style={{
-            flex: 1,
-            backgroundColor: colors.card,
-            borderRadius: 10,
-            padding: 12,
-            alignItems: "center",
-            borderWidth: 1,
-            borderColor: colors.border,
-          }}
-        >
-          <Text style={{ color: colors.textMuted, fontWeight: "600", fontSize: 13 }}>
-            Archivar
-          </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2, opacity: 0.7 }}>
-            Mover a pasadas
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+  // ─── Past routines (compact, collapsible) ─────────────────────────────────
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  const renderPastSection = () => {
+    if (pastPersonal.length === 0) return null;
+    return (
+      <View style={{ marginTop: 28 }}>
+        <TouchableOpacity
+          onPress={() => setShowPast((v) => !v)}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 10,
+          }}
+        >
+          <Text
+            style={{
+              color: colors.textMuted,
+              fontSize: 12,
+              letterSpacing: 1,
+              fontWeight: "600",
+            }}
+          >
+            RUTINAS PASADAS ({pastPersonal.length})
+          </Text>
+          <Ionicons
+            name={showPast ? "chevron-up" : "chevron-down"}
+            size={16}
+            color={colors.textMuted}
+          />
+        </TouchableOpacity>
+
+        {showPast &&
+          pastPersonal.map((r) => (
+            <View
+              key={r.id}
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 8,
+                borderWidth: 1,
+                borderColor: colors.border,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontWeight: "600",
+                    fontSize: 14,
+                  }}
+                >
+                  {r.data.nombre}
+                </Text>
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontSize: 11,
+                    marginTop: 2,
+                    opacity: 0.6,
+                  }}
+                >
+                  {r.data.dias.length} días · {ROUTINE_TYPE_LABELS[r.type]}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => restartRoutine(r)}>
+                <Text
+                  style={{
+                    color: colors.accent,
+                    fontSize: 12,
+                    fontWeight: "600",
+                  }}
+                >
+                  Reiniciar
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+      </View>
+    );
+  };
+
+  // ─── Main render ───────────────────────────────────────────────────────────
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
-        {/* HEADER */}
+      <ScrollView
+        contentContainerStyle={{
+          padding: 20,
+          paddingTop: insets.top + 16,
+          paddingBottom: insets.bottom + 40,
+        }}
+      >
         <Text
           style={{
             color: colors.text,
             fontSize: 26,
-            fontWeight: "bold",
-            marginTop: 16,
+            fontWeight: "800",
+            letterSpacing: -0.5,
             marginBottom: 4,
           }}
         >
           Entrenar
         </Text>
-        <Text style={{ color: colors.textMuted, marginBottom: 28 }}>
-          ¿Cómo vas a entrenar hoy?
-        </Text>
-
-        {/* ── ACTIVE ROUTINES (personal, or club fallback) ── */}
         <Text
-          style={{
-            color: colors.textMuted,
-            fontSize: 12,
-            letterSpacing: 1,
-            marginBottom: 10,
-          }}
+          style={{ color: colors.textMuted, fontSize: 14, marginBottom: 24 }}
         >
-          RUTINAS ACTIVAS
+          Tu rutina de hoy
         </Text>
 
-        {loadingRoutines ? (
-          <ActivityIndicator
-            color={colors.accent}
-            style={{ marginBottom: 24, alignSelf: "flex-start" }}
-          />
-        ) : displayActiveRoutines.length === 0 && displayPendingRoutines.length === 0 ? (
-          <View
-            style={{
-              backgroundColor: colors.card,
-              borderRadius: 16,
-              padding: 20,
-              marginBottom: 28,
-              borderWidth: 1,
-              borderColor: colors.border,
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ color: colors.textMuted, textAlign: "center", lineHeight: 22 }}>
-              No tenés rutinas activas.{"\n"}Creá una abajo para empezar.
-            </Text>
-          </View>
-        ) : (
-          <View style={{ marginBottom: 8 }}>
-            {displayActiveRoutines.map((r) => renderActiveRoutine(r, showingClubFallback))}
-            {displayPendingRoutines.map(renderPendingRoutine)}
-          </View>
-        )}
+        {renderHero()}
+        {renderPastSection()}
 
-        {/* ── PAST PERSONAL ROUTINES ── */}
-        {pastRoutines.length > 0 && (
-          <>
-            <TouchableOpacity
-              onPress={() => setShowPast((v) => !v)}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 10,
-                marginTop: 4,
-              }}
-            >
-              <Text style={{ color: colors.textMuted, fontSize: 12, letterSpacing: 1 }}>
-                RUTINAS PASADAS ({pastRoutines.length})
-              </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                {showPast ? "▲" : "▼"}
-              </Text>
-            </TouchableOpacity>
-            {showPast && (
-              <View style={{ marginBottom: 20 }}>
-                {pastRoutines.map((r) => (
-                  <View
-                    key={r.id}
-                    style={{
-                      backgroundColor: colors.card,
-                      borderRadius: 12,
-                      padding: 14,
-                      marginBottom: 8,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 10,
-                    }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.textMuted, fontWeight: "600", fontSize: 14 }}>
-                        {r.data.nombre}
-                      </Text>
-                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2, opacity: 0.6 }}>
-                        {r.data.dias.length} días · {ROUTINE_TYPE_LABELS[r.type]}
-                      </Text>
-                    </View>
-                    <TouchableOpacity onPress={() => restartRoutine(r)}>
-                      <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "600" }}>
-                        Reiniciar
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
-          </>
-        )}
-
-        {/* ── CREATE ROUTINE ── */}
-        <Text
-          style={{
-            color: colors.textMuted,
-            fontSize: 12,
-            letterSpacing: 1,
-            marginBottom: 10,
-          }}
-        >
-          CREAR RUTINA
-        </Text>
+        {/* Create own routine */}
         <TouchableOpacity
           onPress={routineCreator.openCreateRoutine}
           style={{
+            marginTop: 28,
             backgroundColor: colors.card,
-            borderRadius: 16,
-            padding: 20,
-            marginBottom: 24,
+            borderRadius: 14,
+            padding: 16,
             borderWidth: 1,
             borderColor: colors.border,
             flexDirection: "row",
@@ -513,24 +724,29 @@ export default function TrainScreen() {
         >
           <View
             style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: colors.accentBgAlt,
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: colors.accent + "20",
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Text style={{ color: colors.accent, fontSize: 20, fontWeight: "700" }}>+</Text>
+            <Ionicons name="add" size={20} color={colors.accent} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text, fontWeight: "600", fontSize: 15 }}>
-              Armar rutina
+            <Text
+              style={{ color: colors.text, fontWeight: "600", fontSize: 14 }}
+            >
+              Crear rutina propia
             </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
-              Armá tu propia rutina con días y ejercicios
+            <Text
+              style={{ color: colors.textMuted, fontSize: 12, marginTop: 1 }}
+            >
+              Diseñá tu plan con días y ejercicios
             </Text>
           </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
         </TouchableOpacity>
       </ScrollView>
 
@@ -539,19 +755,28 @@ export default function TrainScreen() {
         routine={detailRoutine}
         onClose={() => setDetailRoutine(null)}
         onStartDay={(day, idx) => {
-          const routine = detailRoutine!;
+          const r = detailRoutine!;
           setDetailRoutine(null);
-          setTimeout(() => startDay(routine, day, idx), 350);
+          setTimeout(() => startDay(r, day, idx), 350);
         }}
-        onSkipDay={(idx) => { if (detailRoutine) skipDay(detailRoutine, idx); }}
-        onUnskipDay={(idx) => { if (detailRoutine) unskipDay(detailRoutine, idx); }}
-        onDelete={() => { if (detailRoutine) deleteRoutine(detailRoutine); }}
+        onSkipDay={(idx) => {
+          if (detailRoutine) skipDay(detailRoutine, idx);
+        }}
+        onUnskipDay={(idx) => {
+          if (detailRoutine) unskipDay(detailRoutine, idx);
+        }}
+        onDelete={() => {
+          if (detailRoutine) deleteRoutine(detailRoutine);
+        }}
       />
 
       <DayPreviewModal
         visible={dayPreviewVisible}
         previewDay={previewDay}
-        onClose={() => { setDayPreviewVisible(false); setPreviewDay(null); }}
+        onClose={() => {
+          setDayPreviewVisible(false);
+          setPreviewDay(null);
+        }}
         onStartSession={() => setConfirmVisible(true)}
         confirmVisible={confirmVisible}
         onConfirmStart={doStartSession}

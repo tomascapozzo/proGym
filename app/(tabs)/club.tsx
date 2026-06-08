@@ -1,3 +1,4 @@
+﻿import ClubRoutinePreviewSheet from "@/components/club/ClubRoutinePreviewSheet";
 import InviteCodeCard from "@/components/club/InviteCodeCard";
 import JoinClubModal from "@/components/club/JoinClubModal";
 import ShareRoutineModal from "@/components/club/ShareRoutineModal";
@@ -117,17 +118,46 @@ export default function ClubScreen() {
   const [joinVisible, setJoinVisible] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [previewEnrollmentId, setPreviewEnrollmentId] = useState<string | null>(null);
+  type FixtureMatch = {
+    id: string;
+    title: string;
+    starts_at: string;
+    opponent: string | null;
+    location: string | null;
+  };
+  const [fixtures, setFixtures] = useState<FixtureMatch[]>([]);
+  const [loadingFixtures, setLoadingFixtures] = useState(false);
+  const [fixtureMonth, setFixtureMonth] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
 
   type SharedEnrollment = {
     id: string;
     status: string;
     progress: { completed_days: number[]; skipped_days?: number[] };
     enrolled_at: string;
-    routine: { id: string; data: { nombre: string; dias: any[] }; type: string } | null;
+    routine: { id: string; data: { nombre: string; dias: any[]; rpe_prompt?: string }; type: string } | null;
   };
   const [sharedRoutines, setSharedRoutines] = useState<SharedEnrollment[]>([]);
   const [loadingShared, setLoadingShared] = useState(false);
   const { syncSharedRoutines } = useSharedRoutines();
+
+  const fetchFixtures = async () => {
+    if (!club) return;
+    setLoadingFixtures(true);
+    const { data } = await supabase
+      .from("club_events")
+      .select("id, title, starts_at, opponent, location")
+      .eq("club_id", club.id)
+      .eq("type", "partido")
+      .order("starts_at", { ascending: true });
+    setFixtures((data ?? []) as FixtureMatch[]);
+    setLoadingFixtures(false);
+  };
 
   const fetchSharedRoutines = async () => {
     if (!user) return;
@@ -138,6 +168,7 @@ export default function ClubScreen() {
       .select("id, status, progress, enrolled_at, routine:routines!routine_id(id, data, type)")
       .eq("user_id", user.id)
       .not("source_share_id", "is", null)
+      .neq("status", "past")
       .order("enrolled_at", { ascending: false });
     setSharedRoutines((data ?? []) as unknown as SharedEnrollment[]);
     setLoadingShared(false);
@@ -145,14 +176,15 @@ export default function ClubScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!user || !membership || isStaff) return;
+      if (!user || !membership || !club || isStaff) return;
+      fetchFixtures();
       fetchSharedRoutines();
-    }, [user, membership, isStaff]),
+    }, [user, membership, club, isStaff]),
   );
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await refresh();
+    await Promise.all([refresh(), ...(!isStaff ? [fetchFixtures(), fetchSharedRoutines()] : [])]);
     setRefreshing(false);
   };
 
@@ -229,6 +261,45 @@ export default function ClubScreen() {
   }
 
   // ── Has club ─────────────────────────────────────────────────────────────
+  const previewEnrollment = sharedRoutines.find((e) => e.id === previewEnrollmentId) ?? null;
+  const previewRoutine: Routine | null = previewEnrollment?.routine
+    ? {
+        id: previewEnrollment.routine.id,
+        enrollment_id: previewEnrollment.id,
+        type: previewEnrollment.routine.type as Routine["type"],
+        status: previewEnrollment.status as Routine["status"],
+        progress: previewEnrollment.progress,
+        data: previewEnrollment.routine.data as Routine["data"],
+        created_at: previewEnrollment.enrolled_at,
+      }
+    : null;
+  const previewSheet = (
+    <ClubRoutinePreviewSheet
+      routine={previewRoutine}
+      enrollmentId={previewEnrollmentId}
+      onClose={() => setPreviewEnrollmentId(null)}
+      onStart={() => {
+        if (!previewRoutine || !previewEnrollment) return;
+        const nextDay = getNextDay(previewRoutine);
+        if (!nextDay) return;
+        router.push({
+          pathname: "/session",
+          params: {
+            type: "routine",
+            dayData: JSON.stringify(nextDay.day),
+            dayIndex: String(nextDay.index),
+            routineId: previewRoutine.id,
+            enrollmentId: previewEnrollment.id,
+            routineType: previewRoutine.type,
+            completedDays: JSON.stringify(previewEnrollment.progress?.completed_days ?? []),
+            totalDays: String(previewRoutine.data.dias?.length ?? 1),
+            rpePrompt: previewRoutine.data.rpe_prompt ?? "sesion",
+          },
+        });
+      }}
+    />
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
@@ -506,6 +577,163 @@ export default function ClubScreen() {
                 )}
               </View>
 
+              {/* Fixture */}
+              <View>
+                <Text style={{ color: colors.text, fontSize: 16, fontWeight: "700", marginBottom: 12 }}>
+                  Fixture
+                </Text>
+
+                {/* Month navigator */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 12,
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={() => {
+                      const prev = new Date(fixtureMonth);
+                      prev.setMonth(prev.getMonth() - 1);
+                      setFixtureMonth(prev);
+                    }}
+                    activeOpacity={0.7}
+                    style={{
+                      width: 36, height: 36, borderRadius: 10,
+                      backgroundColor: colors.surface,
+                      alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="chevron-back" size={18} color={colors.text} />
+                  </TouchableOpacity>
+
+                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: "700", textTransform: "capitalize" }}>
+                    {fixtureMonth.toLocaleDateString("es-AR", { month: "long", year: "numeric" })}
+                  </Text>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      const next = new Date(fixtureMonth);
+                      next.setMonth(next.getMonth() + 1);
+                      setFixtureMonth(next);
+                    }}
+                    activeOpacity={0.7}
+                    style={{
+                      width: 36, height: 36, borderRadius: 10,
+                      backgroundColor: colors.surface,
+                      alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="chevron-forward" size={18} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Matches for selected month */}
+                {loadingFixtures ? (
+                  <ActivityIndicator color={colors.accent} style={{ alignSelf: "flex-start" }} />
+                ) : (() => {
+                  const monthMatches = fixtures.filter((m) => {
+                    const d = new Date(m.starts_at);
+                    return d.getFullYear() === fixtureMonth.getFullYear() &&
+                      d.getMonth() === fixtureMonth.getMonth();
+                  });
+                  if (monthMatches.length === 0) {
+                    return (
+                      <View
+                        style={{
+                          backgroundColor: colors.card,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          padding: 16,
+                          alignItems: "center",
+                        }}
+                      >
+                        <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                          Sin partidos este mes.
+                        </Text>
+                      </View>
+                    );
+                  }
+                  return (
+                    <View
+                      style={{
+                        backgroundColor: colors.card,
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        overflow: "hidden",
+                      }}
+                    >
+                      {monthMatches.map((match, i) => {
+                        const d = new Date(match.starts_at);
+                        const isLast = i === monthMatches.length - 1;
+                        return (
+                          <View
+                            key={match.id}
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              paddingHorizontal: 14,
+                              paddingVertical: 12,
+                              borderBottomWidth: isLast ? 0 : 1,
+                              borderBottomColor: colors.border,
+                              gap: 12,
+                            }}
+                          >
+                            <View style={{ width: 44, alignItems: "center" }}>
+                              <Text
+                                style={{
+                                  color: colors.textMuted,
+                                  fontSize: 10,
+                                  fontWeight: "600",
+                                  textTransform: "capitalize",
+                                }}
+                              >
+                                {d.toLocaleDateString("es-AR", { weekday: "short" })}
+                              </Text>
+                              <Text
+                                style={{
+                                  color: colors.text,
+                                  fontSize: 22,
+                                  fontWeight: "800",
+                                  lineHeight: 26,
+                                }}
+                              >
+                                {d.getDate()}
+                              </Text>
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text
+                                style={{ color: colors.text, fontWeight: "700", fontSize: 14 }}
+                                numberOfLines={1}
+                              >
+                                {match.opponent ? `vs. ${match.opponent}` : match.title}
+                              </Text>
+                            </View>
+                            {match.location && (
+                              <View
+                                style={{
+                                  backgroundColor: colors.accent + "18",
+                                  borderRadius: 6,
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 3,
+                                }}
+                              >
+                                <Text style={{ color: colors.accent, fontSize: 11, fontWeight: "700" }}>
+                                  {match.location === "local" ? "Local" : "Visita"}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })()}
+              </View>
+
               {/* Club routines */}
               <View>
                 <SectionHeader title="Rutinas del club" count={sharedRoutines.length || undefined} colors={colors} />
@@ -546,22 +774,7 @@ export default function ClubScreen() {
                       const totalDays = routine.data.dias?.length ?? 1;
                       const completedCount = enrollment.progress?.completed_days?.length ?? 0;
 
-                      const handleStart = () => {
-                        if (!nextDay) return;
-                        router.push({
-                          pathname: "/session",
-                          params: {
-                            type: "routine",
-                            dayData: JSON.stringify(nextDay.day),
-                            dayIndex: String(nextDay.index),
-                            routineId: routine.id,
-                            enrollmentId: enrollment.id,
-                            routineType: routine.type,
-                            completedDays: JSON.stringify(enrollment.progress?.completed_days ?? []),
-                            totalDays: String(totalDays),
-                          },
-                        });
-                      };
+                      const handlePreview = () => setPreviewEnrollmentId(enrollment.id);
 
                       return (
                         <View
@@ -602,17 +815,19 @@ export default function ClubScreen() {
 
                           {enrollment.status === "active" && nextDay ? (
                             <TouchableOpacity
-                              onPress={handleStart}
+                              onPress={handlePreview}
                               activeOpacity={0.85}
                               style={{
-                                backgroundColor: colors.accent,
+                                backgroundColor: colors.surface,
                                 borderRadius: 10,
                                 paddingVertical: 10,
                                 alignItems: "center",
+                                borderWidth: 1,
+                                borderColor: colors.border,
                               }}
                             >
-                              <Text style={{ color: colors.accentText, fontWeight: "700", fontSize: 14 }}>
-                                {completedCount > 0 ? "Continuar" : "Comenzar"}
+                              <Text style={{ color: colors.text, fontWeight: "700", fontSize: 14 }}>
+                                Visualizar
                               </Text>
                             </TouchableOpacity>
                           ) : enrollment.status === "pending_restart" ? (
@@ -644,6 +859,8 @@ export default function ClubScreen() {
           groups={groups}
         />
       )}
+
+      {!isStaff && previewSheet}
     </View>
   );
 }

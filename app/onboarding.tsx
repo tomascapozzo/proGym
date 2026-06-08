@@ -10,7 +10,7 @@ import type {
 } from "@/types/forms";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -54,11 +54,35 @@ export default function OnboardingScreen() {
   // ── Anamnesis step state ───────────────────────────────────────────────────
   const [anamnesisForm, setAnamnesisForm] = useState<ClubForm | null>(null);
   const [questions, setQuestions] = useState<ClubFormQuestion[]>([]);
-  const [answers, setAnswers] = useState<Record<string, string | number | string[]>>({});
+  const [answers, setAnswers] = useState<
+    Record<string, string | number | string[]>
+  >({});
   const [loadingQuestions, setLoadingQuestions] = useState(false);
-  const [currentPickerQuestion, setCurrentPickerQuestion] = useState<ClubFormQuestion | null>(null);
+  const [currentPickerQuestion, setCurrentPickerQuestion] =
+    useState<ClubFormQuestion | null>(null);
   const [loadingForm, setLoadingForm] = useState(false);
   const [formError, setFormError] = useState("");
+
+  // ── System fields (always shown, saved to profiles) ────────────────────────
+  const [sysEdad, setSysEdad] = useState("");
+  const [sysPeso, setSysPeso] = useState("");
+  const [sysAltura, setSysAltura] = useState("");
+  const [sysPosition, setSysPosition] = useState("");
+  const [currentSysPicker, setCurrentSysPicker] = useState<
+    "position" | null
+  >(null);
+
+  const POSITION_OPTIONS = [
+    "Pilar",
+    "Hooker",
+    "Segunda linea",
+    "Tercera linea",
+    "Medio-scrum",
+    "Apertura",
+    "Centro",
+    "Wing",
+    "Fullback",
+  ];
 
   useEffect(() => {
     const clubId = clubMembership?.club_id;
@@ -113,9 +137,18 @@ export default function OnboardingScreen() {
 
     setLoadingPreview(false);
 
-    if (qErr || !data) { setInvError("invalid_code"); return; }
-    if (data.expires_at && new Date(data.expires_at) < new Date()) { setInvError("expired"); return; }
-    if (data.max_uses != null && data.uses_count >= data.max_uses) { setInvError("max_uses_reached"); return; }
+    if (qErr || !data) {
+      setInvError("invalid_code");
+      return;
+    }
+    if (data.expires_at && new Date(data.expires_at) < new Date()) {
+      setInvError("expired");
+      return;
+    }
+    if (data.max_uses != null && data.uses_count >= data.max_uses) {
+      setInvError("max_uses_reached");
+      return;
+    }
 
     setPreview({
       invitation: data as ClubInvitation,
@@ -128,14 +161,25 @@ export default function OnboardingScreen() {
     if (!preview) return;
     setLoadingJoin(true);
 
-    const { data, error: rpcErr } = await supabase.rpc("redeem_club_invitation", {
-      p_code: code.trim().toUpperCase(),
-    });
+    const { data, error: rpcErr } = await supabase.rpc(
+      "redeem_club_invitation",
+      {
+        p_code: code.trim().toUpperCase(),
+      },
+    );
 
     setLoadingJoin(false);
 
-    if (rpcErr) { setInvError(rpcErr.message); setPreview(null); return; }
-    if (data?.error) { setInvError(data.error as string); setPreview(null); return; }
+    if (rpcErr) {
+      setInvError(rpcErr.message);
+      setPreview(null);
+      return;
+    }
+    if (data?.error) {
+      setInvError(data.error as string);
+      setPreview(null);
+      return;
+    }
 
     await refreshProfile();
     setStep("anamnesis");
@@ -152,11 +196,24 @@ export default function OnboardingScreen() {
     setFormError("");
     setLoadingForm(true);
 
-    // Validate required questions
-    const missing = questions.filter(
+    // Validate system fields (always required)
+    if (!sysEdad || !sysPeso.trim() || !sysAltura.trim() || !sysPosition) {
+      setFormError("Por favor completá todos los datos básicos del perfil.");
+      setLoadingForm(false);
+      return;
+    }
+
+    // Only validate questions that are currently visible
+    const visibleQs = questions.filter((q) =>
+      !q.depends_on_question_id ||
+      answers[q.depends_on_question_id] === q.depends_on_answer,
+    );
+    const missing = visibleQs.filter(
       (q) =>
         q.required &&
-        (answers[q.id] === undefined || answers[q.id] === "" || answers[q.id] === null),
+        (answers[q.id] === undefined ||
+          answers[q.id] === "" ||
+          answers[q.id] === null),
     );
     if (missing.length > 0) {
       setFormError("Por favor completá todas las preguntas requeridas.");
@@ -200,11 +257,15 @@ export default function OnboardingScreen() {
                   : null,
               answer_number:
                 q.type === "scale" || q.type === "one_rm"
-                  ? val !== undefined && val !== "" ? Number(val) : null
+                  ? val !== undefined && val !== ""
+                    ? Number(val)
+                    : null
                   : null,
               answer_options:
                 q.type === "multiple_choice"
-                  ? val !== undefined ? [String(val)] : null
+                  ? val !== undefined
+                    ? [String(val)]
+                    : null
                   : null,
             };
           });
@@ -217,7 +278,13 @@ export default function OnboardingScreen() {
 
     const { error: profileErr } = await supabase
       .from("profiles")
-      .update({ onboarding_completed: true })
+      .update({
+        onboarding_completed: true,
+        edad: sysEdad,
+        peso: sysPeso.trim(),
+        altura: sysAltura.trim(),
+        position: sysPosition,
+      })
       .eq("id", user.id);
 
     setLoadingForm(false);
@@ -232,6 +299,13 @@ export default function OnboardingScreen() {
   };
 
   // ── Question renderer ──────────────────────────────────────────────────────
+
+  // Questions visible given current answers
+  const visibleQuestions = questions.filter(
+    (q) =>
+      !q.depends_on_question_id ||
+      answers[q.depends_on_question_id] === q.depends_on_answer,
+  );
 
   const fieldCard = {
     backgroundColor: colors.card,
@@ -249,12 +323,25 @@ export default function OnboardingScreen() {
     marginBottom: 8,
   };
 
+  // Returns the label text — asterisk appended for required questions
+  // Use inside a <Text> that accepts nested <Text> children for coloring
+  const questionLabel = (q: ClubFormQuestion) =>
+    q.required ? (
+      <>
+        {q.question_text.toUpperCase()}
+        {"  "}
+        <Text style={{ color: colors.error ?? colors.accent, fontSize: 13 }}>*</Text>
+      </>
+    ) : (
+      <>{q.question_text.toUpperCase()}</>
+    );
+
   const renderQuestion = (q: ClubFormQuestion) => {
     switch (q.type) {
       case "text":
         return (
           <View key={q.id} style={fieldCard}>
-            <Text style={labelStyle}>{q.question_text.toUpperCase()}</Text>
+            <Text style={labelStyle}>{questionLabel(q)}</Text>
             <TextInput
               placeholder="Escribí tu respuesta..."
               placeholderTextColor={colors.textDisabled}
@@ -278,9 +365,15 @@ export default function OnboardingScreen() {
       case "yes_no":
         return (
           <View key={q.id} style={fieldCard}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
               <Text style={[labelStyle, { marginBottom: 0, flex: 1 }]}>
-                {q.question_text.toUpperCase()}
+                {questionLabel(q)}
               </Text>
               <View style={{ flexDirection: "row", gap: 6 }}>
                 {(["si", "no"] as const).map((val) => (
@@ -291,14 +384,19 @@ export default function OnboardingScreen() {
                       paddingHorizontal: 14,
                       paddingVertical: 6,
                       borderRadius: 8,
-                      backgroundColor: answers[q.id] === val ? colors.accent : colors.surface,
+                      backgroundColor:
+                        answers[q.id] === val ? colors.accent : colors.surface,
                       borderWidth: 1,
-                      borderColor: answers[q.id] === val ? colors.accent : colors.border,
+                      borderColor:
+                        answers[q.id] === val ? colors.accent : colors.border,
                     }}
                   >
                     <Text
                       style={{
-                        color: answers[q.id] === val ? colors.accentText : colors.textMuted,
+                        color:
+                          answers[q.id] === val
+                            ? colors.accentText
+                            : colors.textMuted,
                         fontWeight: "600",
                         fontSize: 13,
                       }}
@@ -319,7 +417,7 @@ export default function OnboardingScreen() {
             onPress={() => setCurrentPickerQuestion(q)}
             style={fieldCard}
           >
-            <Text style={labelStyle}>{q.question_text.toUpperCase()}</Text>
+            <Text style={labelStyle}>{questionLabel(q)}</Text>
             <Text
               style={{
                 color: answers[q.id] ? colors.text : colors.textDisabled,
@@ -339,13 +437,21 @@ export default function OnboardingScreen() {
         );
         return (
           <View key={q.id} style={fieldCard}>
-            <Text style={labelStyle}>{q.question_text.toUpperCase()}</Text>
+            <Text style={labelStyle}>{questionLabel(q)}</Text>
             {(opts.min_label || opts.max_label) && (
               <View
-                style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  marginBottom: 8,
+                }}
               >
-                <Text style={{ color: colors.textMuted, fontSize: 11 }}>{opts.min_label}</Text>
-                <Text style={{ color: colors.textMuted, fontSize: 11 }}>{opts.max_label}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                  {opts.min_label}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                  {opts.max_label}
+                </Text>
               </View>
             )}
             <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
@@ -369,7 +475,9 @@ export default function OnboardingScreen() {
                   <Text
                     style={{
                       color:
-                        answers[q.id] === n ? colors.accentText : colors.textMuted,
+                        answers[q.id] === n
+                          ? colors.accentText
+                          : colors.textMuted,
                       fontWeight: "600",
                       fontSize: 14,
                     }}
@@ -385,9 +493,15 @@ export default function OnboardingScreen() {
 
       case "one_rm": {
         const opts = q.options as OneRmOptions | null;
-        const label = opts?.exercise_name
-          ? `${q.question_text.toUpperCase()} — ${opts.exercise_name}`
-          : q.question_text.toUpperCase();
+        const exerciseSuffix = opts?.exercise_name ? ` — ${opts.exercise_name}` : "";
+        const label = (
+          <>
+            {q.question_text.toUpperCase()}{exerciseSuffix}
+            {q.required && (
+              <>{"  "}<Text style={{ color: colors.error ?? colors.accent, fontSize: 13 }}>*</Text></>
+            )}
+          </>
+        );
         return (
           <View key={q.id} style={fieldCard}>
             <Text style={labelStyle}>{label}</Text>
@@ -419,7 +533,8 @@ export default function OnboardingScreen() {
   // ── Render helpers ─────────────────────────────────────────────────────────
 
   const roleLabel = preview?.invitation.role === "coach" ? "Coach" : "Jugador";
-  const roleColor = preview?.invitation.role === "coach" ? colors.blue : colors.accent;
+  const roleColor =
+    preview?.invitation.role === "coach" ? colors.blue : colors.accent;
 
   // ── Invitation step ────────────────────────────────────────────────────────
 
@@ -437,14 +552,36 @@ export default function OnboardingScreen() {
           }}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={{ color: colors.accent, fontSize: 12, letterSpacing: 1, marginBottom: 8 }}>
+          <Text
+            style={{
+              color: colors.accent,
+              fontSize: 12,
+              letterSpacing: 1,
+              marginBottom: 8,
+            }}
+          >
             PASO 1 DE 2
           </Text>
-          <Text style={{ color: colors.text, fontSize: 26, fontWeight: "bold", marginBottom: 8 }}>
+          <Text
+            style={{
+              color: colors.text,
+              fontSize: 26,
+              fontWeight: "bold",
+              marginBottom: 8,
+            }}
+          >
             Unite a tu club
           </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 14, marginBottom: 36, lineHeight: 20 }}>
-            Ingresa el codigo de invitacion que te compartio tu coach para comenzar.
+          <Text
+            style={{
+              color: colors.textMuted,
+              fontSize: 14,
+              marginBottom: 36,
+              lineHeight: 20,
+            }}
+          >
+            Ingresa el codigo de invitacion que te compartio tu coach para
+            comenzar.
           </Text>
 
           {!preview ? (
@@ -462,7 +599,10 @@ export default function OnboardingScreen() {
               >
                 <TextInput
                   value={code}
-                  onChangeText={(t) => { setCode(t.toUpperCase()); setInvError(null); }}
+                  onChangeText={(t) => {
+                    setCode(t.toUpperCase());
+                    setInvError(null);
+                  }}
                   placeholder="Ej: PLAYER-AB3X7K"
                   placeholderTextColor={colors.textMuted}
                   autoCapitalize="characters"
@@ -477,7 +617,13 @@ export default function OnboardingScreen() {
               </View>
 
               {invError ? (
-                <Text style={{ color: colors.error, fontSize: 13, marginBottom: 16 }}>
+                <Text
+                  style={{
+                    color: colors.error,
+                    fontSize: 13,
+                    marginBottom: 16,
+                  }}
+                >
                   {INV_ERROR_MESSAGES[invError] ?? invError}
                 </Text>
               ) : null}
@@ -497,7 +643,13 @@ export default function OnboardingScreen() {
                 {loadingPreview ? (
                   <ActivityIndicator color={colors.accentText} />
                 ) : (
-                  <Text style={{ color: colors.accentText, fontSize: 15, fontWeight: "700" }}>
+                  <Text
+                    style={{
+                      color: colors.accentText,
+                      fontSize: 15,
+                      fontWeight: "700",
+                    }}
+                  >
                     Verificar codigo
                   </Text>
                 )}
@@ -514,7 +666,13 @@ export default function OnboardingScreen() {
                   gap: 12,
                 }}
               >
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 12,
+                  }}
+                >
                   <View
                     style={{
                       width: 48,
@@ -528,11 +686,23 @@ export default function OnboardingScreen() {
                     <Ionicons name="people" size={24} color={colors.accent} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text, fontSize: 17, fontWeight: "800" }}>
+                    <Text
+                      style={{
+                        color: colors.text,
+                        fontSize: 17,
+                        fontWeight: "800",
+                      }}
+                    >
                       {preview.club.name}
                     </Text>
                     {preview.club.description ? (
-                      <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                      <Text
+                        style={{
+                          color: colors.textMuted,
+                          fontSize: 12,
+                          marginTop: 2,
+                        }}
+                      >
                         {preview.club.description}
                       </Text>
                     ) : null}
@@ -548,7 +718,13 @@ export default function OnboardingScreen() {
                       backgroundColor: roleColor + "20",
                     }}
                   >
-                    <Text style={{ color: roleColor, fontSize: 12, fontWeight: "700" }}>
+                    <Text
+                      style={{
+                        color: roleColor,
+                        fontSize: 12,
+                        fontWeight: "700",
+                      }}
+                    >
                       {roleLabel}
                     </Text>
                   </View>
@@ -563,7 +739,13 @@ export default function OnboardingScreen() {
                         borderColor: colors.border,
                       }}
                     >
-                      <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: "600" }}>
+                      <Text
+                        style={{
+                          color: colors.textMuted,
+                          fontSize: 12,
+                          fontWeight: "600",
+                        }}
+                      >
                         {preview.targetGroupName}
                       </Text>
                     </View>
@@ -572,14 +754,23 @@ export default function OnboardingScreen() {
               </View>
 
               {invError ? (
-                <Text style={{ color: colors.error, fontSize: 13, marginBottom: 12 }}>
+                <Text
+                  style={{
+                    color: colors.error,
+                    fontSize: 13,
+                    marginBottom: 12,
+                  }}
+                >
                   {INV_ERROR_MESSAGES[invError] ?? invError}
                 </Text>
               ) : null}
 
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <TouchableOpacity
-                  onPress={() => { setPreview(null); setInvError(null); }}
+                  onPress={() => {
+                    setPreview(null);
+                    setInvError(null);
+                  }}
                   activeOpacity={0.7}
                   style={{
                     flex: 1,
@@ -591,7 +782,13 @@ export default function OnboardingScreen() {
                     borderColor: colors.border,
                   }}
                 >
-                  <Text style={{ color: colors.textMuted, fontSize: 15, fontWeight: "600" }}>
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontSize: 15,
+                      fontWeight: "600",
+                    }}
+                  >
                     Volver
                   </Text>
                 </TouchableOpacity>
@@ -612,7 +809,13 @@ export default function OnboardingScreen() {
                   {loadingJoin ? (
                     <ActivityIndicator color={colors.accentText} />
                   ) : (
-                    <Text style={{ color: colors.accentText, fontSize: 15, fontWeight: "700" }}>
+                    <Text
+                      style={{
+                        color: colors.accentText,
+                        fontSize: 15,
+                        fontWeight: "700",
+                      }}
+                    >
                       Unirme a {preview.club.name}
                     </Text>
                   )}
@@ -637,24 +840,155 @@ export default function OnboardingScreen() {
         }}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={{ color: colors.accent, fontSize: 12, letterSpacing: 1, marginBottom: 8 }}>
+        <Text
+          style={{
+            color: colors.accent,
+            fontSize: 12,
+            letterSpacing: 1,
+            marginBottom: 8,
+          }}
+        >
           PASO 2 DE 2
         </Text>
-        <Text style={{ color: colors.text, fontSize: 26, fontWeight: "bold", marginTop: 6 }}>
+        <Text
+          style={{
+            color: colors.text,
+            fontSize: 26,
+            fontWeight: "bold",
+            marginTop: 6,
+          }}
+        >
           Contanos sobre vos
         </Text>
         <Text style={{ color: colors.textMuted, marginBottom: 28 }}>
           Esto ayuda a tu coach a personalizar tu plan
         </Text>
 
+        {/* ── Mandatory profile fields (always shown) ────────────────── */}
+        <Text
+          style={{
+            color: "rgba(255,255,255,0.15)",
+            fontSize: 8,
+            letterSpacing: 1.5,
+            textTransform: "uppercase",
+            marginBottom: 6,
+          }}
+        >
+          DATOS DEL PERFIL
+        </Text>
+
+        {/* Edad */}
+        <View style={fieldCard}>
+          <Text style={labelStyle}>EDAD</Text>
+          <TextInput
+            placeholder="años"
+            placeholderTextColor={colors.textDisabled}
+            keyboardType="numeric"
+            value={sysEdad}
+            onChangeText={setSysEdad}
+            style={{
+              backgroundColor: colors.surface,
+              borderRadius: 10,
+              padding: 12,
+              color: colors.text,
+              borderWidth: 1,
+              borderColor: colors.border,
+              fontSize: 15,
+            }}
+          />
+        </View>
+
+        {/* Altura */}
+        <View style={fieldCard}>
+          <Text style={labelStyle}>ALTURA</Text>
+          <TextInput
+            placeholder="cm"
+            placeholderTextColor={colors.textDisabled}
+            keyboardType="numeric"
+            value={sysAltura}
+            onChangeText={setSysAltura}
+            style={{
+              backgroundColor: colors.surface,
+              borderRadius: 10,
+              padding: 12,
+              color: colors.text,
+              borderWidth: 1,
+              borderColor: colors.border,
+              fontSize: 15,
+            }}
+          />
+        </View>
+
+        {/* Peso */}
+        <View style={fieldCard}>
+          <Text style={labelStyle}>PESO</Text>
+          <TextInput
+            placeholder="kg"
+            placeholderTextColor={colors.textDisabled}
+            keyboardType="numeric"
+            value={sysPeso}
+            onChangeText={setSysPeso}
+            style={{
+              backgroundColor: colors.surface,
+              borderRadius: 10,
+              padding: 12,
+              color: colors.text,
+              borderWidth: 1,
+              borderColor: colors.border,
+              fontSize: 15,
+            }}
+          />
+        </View>
+
+        {/* Posición */}
+        <TouchableOpacity
+          onPress={() => setCurrentSysPicker("position")}
+          style={fieldCard}
+        >
+          <Text style={labelStyle}>POSICIÓN</Text>
+          <Text
+            style={{
+              color: sysPosition ? colors.text : colors.textDisabled,
+              fontSize: 15,
+            }}
+          >
+            {sysPosition || "Seleccionar"}
+          </Text>
+        </TouchableOpacity>
+
+        {/* ── Club custom questions ───────────────────────────────────── */}
+        {questions.length > 0 && (
+          <Text
+            style={{
+              color: "rgba(255,255,255,0.15)",
+              fontSize: 8,
+              letterSpacing: 1.5,
+              textTransform: "uppercase",
+              marginBottom: 6,
+              marginTop: 8,
+            }}
+          >
+            PREGUNTAS DEL CLUB
+          </Text>
+        )}
+
         {loadingQuestions ? (
-          <ActivityIndicator color={colors.accent} style={{ marginBottom: 24 }} />
+          <ActivityIndicator
+            color={colors.accent}
+            style={{ marginBottom: 24 }}
+          />
         ) : (
-          questions.map((q) => renderQuestion(q))
+          visibleQuestions.map((q) => renderQuestion(q))
         )}
 
         {formError ? (
-          <Text style={{ color: colors.error, textAlign: "center", marginBottom: 12 }}>
+          <Text
+            style={{
+              color: colors.error,
+              textAlign: "center",
+              marginBottom: 12,
+            }}
+          >
             {formError}
           </Text>
         ) : null}
@@ -674,23 +1008,33 @@ export default function OnboardingScreen() {
           {loadingForm ? (
             <ActivityIndicator color={colors.accentText} />
           ) : (
-            <Text style={{ color: colors.accentText, fontWeight: "600", fontSize: 16 }}>
+            <Text
+              style={{
+                color: colors.accentText,
+                fontWeight: "600",
+                fontSize: 16,
+              }}
+            >
               Continuar
             </Text>
           )}
         </TouchableOpacity>
       </ScrollView>
 
-      {/* PICKER MODAL for multiple_choice questions */}
+      {/* SYSTEM PICKER MODAL (edad / position) */}
       <Modal
-        visible={!!currentPickerQuestion}
+        visible={!!currentSysPicker}
         transparent
         animationType="slide"
         presentationStyle="overFullScreen"
       >
         <Pressable
-          onPress={() => setCurrentPickerQuestion(null)}
-          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}
+          onPress={() => setCurrentSysPicker(null)}
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            justifyContent: "flex-end",
+          }}
         >
           <Pressable>
             <View
@@ -702,21 +1046,109 @@ export default function OnboardingScreen() {
                 maxHeight: 400,
               }}
             >
-              <Text style={{ color: colors.text, fontSize: 16, marginBottom: 10, fontWeight: "600" }}>
+              <Text
+                style={{
+                  color: colors.text,
+                  fontSize: 16,
+                  marginBottom: 10,
+                  fontWeight: "600",
+                }}
+              >
+                Posición
+              </Text>
+              <FlatList
+                data={POSITION_OPTIONS}
+                keyExtractor={(item) => item}
+                renderItem={({ item }) => {
+                  const isSelected = sysPosition === item;
+                  return (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSysPosition(item);
+                        setCurrentSysPicker(null);
+                      }}
+                      style={{
+                        padding: 14,
+                        borderRadius: 10,
+                        backgroundColor: isSelected
+                          ? colors.accent + "22"
+                          : "transparent",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: isSelected ? colors.accent : colors.text,
+                        }}
+                      >
+                        {item}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+              <TouchableOpacity onPress={() => setCurrentSysPicker(null)}>
+                <Text
+                  style={{
+                    color: colors.accent,
+                    textAlign: "right",
+                    marginTop: 10,
+                    fontWeight: "600",
+                  }}
+                >
+                  Listo
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* PICKER MODAL for multiple_choice questions */}
+      <Modal
+        visible={!!currentPickerQuestion}
+        transparent
+        animationType="slide"
+        presentationStyle="overFullScreen"
+      >
+        <Pressable
+          onPress={() => setCurrentPickerQuestion(null)}
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            justifyContent: "flex-end",
+          }}
+        >
+          <Pressable>
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                padding: 16,
+                maxHeight: 400,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.text,
+                  fontSize: 16,
+                  marginBottom: 10,
+                  fontWeight: "600",
+                }}
+              >
                 {currentPickerQuestion?.question_text}
               </Text>
               <FlatList
                 data={
                   currentPickerQuestion
-                    ? (currentPickerQuestion.options as string[]) ?? []
+                    ? ((currentPickerQuestion.options as string[]) ?? [])
                     : []
                 }
                 keyExtractor={(item) => item}
                 renderItem={({ item }) => {
-                  const isSelected =
-                    currentPickerQuestion
-                      ? answers[currentPickerQuestion.id] === item
-                      : false;
+                  const isSelected = currentPickerQuestion
+                    ? answers[currentPickerQuestion.id] === item
+                    : false;
                   return (
                     <TouchableOpacity
                       onPress={() => {
@@ -728,10 +1160,16 @@ export default function OnboardingScreen() {
                       style={{
                         padding: 14,
                         borderRadius: 10,
-                        backgroundColor: isSelected ? colors.accent + "22" : "transparent",
+                        backgroundColor: isSelected
+                          ? colors.accent + "22"
+                          : "transparent",
                       }}
                     >
-                      <Text style={{ color: isSelected ? colors.accent : colors.text }}>
+                      <Text
+                        style={{
+                          color: isSelected ? colors.accent : colors.text,
+                        }}
+                      >
                         {item}
                       </Text>
                     </TouchableOpacity>
@@ -739,7 +1177,14 @@ export default function OnboardingScreen() {
                 }}
               />
               <TouchableOpacity onPress={() => setCurrentPickerQuestion(null)}>
-                <Text style={{ color: colors.accent, textAlign: "right", marginTop: 10, fontWeight: "600" }}>
+                <Text
+                  style={{
+                    color: colors.accent,
+                    textAlign: "right",
+                    marginTop: 10,
+                    fontWeight: "600",
+                  }}
+                >
                   Listo
                 </Text>
               </TouchableOpacity>

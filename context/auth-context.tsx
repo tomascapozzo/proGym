@@ -12,21 +12,14 @@ import React, {
 type Profile = {
   id: string;
   name: string;
-  username: string;
+  lastname: string;
   onboarding_completed: boolean;
   edad?: string;
-  profesion?: string;
-  disponibilidad?: string;
-  equipamiento?: string;
-  nivel?: string;
-  actualidad?: string;
-  objetivo?: string[];
   peso?: string;
   altura?: string;
-  lesiones?: string;
+  position?: string;
   lesiones_previas?: { lesion: string; anio: string }[];
   gimnasio?: string;
-  position?: string;
   pr_exercises?: string[];
   one_rm?: Record<string, number>;
 };
@@ -45,6 +38,7 @@ type AuthContextType = {
     email: string,
     password: string,
     name: string,
+    lastname: string,
   ) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -124,16 +118,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null };
   };
 
-  const signUp = async (email: string, password: string, name: string) => {
+  const signUp = async (email: string, password: string, name: string, lastname: string) => {
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) return { error: error.message };
 
     if (data.user) {
-      const username = email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
       const { error: profileError } = await supabase.from("profiles").insert({
         id: data.user.id,
         name,
-        username,
+        lastname,
         onboarding_completed: false,
       });
       if (profileError) return { error: profileError.message };

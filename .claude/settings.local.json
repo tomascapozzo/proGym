@@ -14,7 +14,13 @@
       "Bash(npm uninstall *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npm --version)",
+      "Bash(Start-Sleep -Seconds 8)",
+      "Bash(Get-Content \"C:\\\\Users\\\\tomya\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-tomya-Desktop-Personal-proGym\\\\ad82e0bb-2a73-453e-ae73-2d5c37c5426c\\\\tasks\\\\bo0xqd3e3.output\" -Tail 30)",
+      "PowerShell(Get-Process *)",
+      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:3000/dashboard\" -UseBasicParsing -TimeoutSec 5 | Select-Object StatusCode, @{n='ContentLength';e={$_.RawContentLength}}, @{n='Title';e={if \\($_.Content -match '<title>\\([^<]+\\)'\\) { $matches[1] } else { 'N/A' }}})",
+      "Bash(git cherry-pick *)"
     ]
   },
   "enabledMcpjsonServers": [

@@ -75,14 +75,16 @@ export function useSharedRoutines() {
         .in("id", staleIds);
     }
 
-    // Reactivate any enrollment whose share still exists but status fell to past/pending_restart
+    // Reactivate enrollments that were archived because their share was temporarily removed
+    // but the share now exists again. Only reactivate "past" — never touch "pending_restart"
+    // (player completed a weekly cycle and is waiting for the next one).
     if (validShareIds.size > 0) {
       await supabase
         .from("routine_enrollments")
         .update({ status: "active" })
         .eq("user_id", user.id)
         .in("source_share_id", [...validShareIds])
-        .neq("status", "active");
+        .eq("status", "past");
     }
   };
 

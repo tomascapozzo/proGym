@@ -20,13 +20,14 @@ export default function SignupScreen() {
   const insets = useSafeAreaInsets();
 
   const [name, setName] = useState("");
+  const [lastname, setLastname] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSignup = async () => {
-    if (!name.trim() || !email.trim() || !password.trim()) {
+    if (!name.trim() || !lastname.trim() || !email.trim() || !password.trim()) {
       setError("Completá todos los campos.");
       return;
     }
@@ -36,7 +37,7 @@ export default function SignupScreen() {
     }
     setError("");
     setLoading(true);
-    const { error: err } = await signUp(email.trim(), password, name.trim());
+    const { error: err } = await signUp(email.trim(), password, name.trim(), lastname.trim());
     setLoading(false);
     if (err) {
       setError(err);
@@ -101,6 +102,17 @@ export default function SignupScreen() {
           value={name}
           onChangeText={setName}
           placeholder="Tu nombre"
+          placeholderTextColor={colors.textDisabled}
+          autoCapitalize="words"
+          style={inputStyle}
+        />
+
+        {/* APELLIDO */}
+        <Text style={labelStyle}>APELLIDO</Text>
+        <TextInput
+          value={lastname}
+          onChangeText={setLastname}
+          placeholder="Tu apellido"
           placeholderTextColor={colors.textDisabled}
           autoCapitalize="words"
           style={inputStyle}
